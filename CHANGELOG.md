@@ -1,3 +1,164 @@
+<!--
+ ~ SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ ~ SPDX-FileCopyrightText: 2016-2024 Tobias Kaminsky <tobias@kaminsky.me>
+ ~ SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+-->
+
+## 3.29.0 (April 24, 2024)
+
+- NC Assistant
+- Client certificates
+- Personal files view
+- REUSE compliance
+- Bugfixes
+
+Minimum: NC 16 Server, Android 7.0 Nougat
+
+For a full list, please see https://github.com/nextcloud/android/milestone/89
+
+## 3.28.2 (April 4th, 2024)
+
+- Bugfixes
+
+Minimum: NC 16 Server, Android 7.0 Nougat
+
+For a full list, please see https://github.com/nextcloud/android/milestone/90
+
+## 3.28.1 (March 25th, 2024)
+
+- Bugfixes
+
+Minimum: NC 16 Server, Android 7.0 Nougat
+
+For a full list, please see https://github.com/nextcloud/android/milestone/90
+
+## 3.28.0 (February 13th, 2024)
+
+- E2E sharing
+- Bugfixes
+
+Minimum: NC 16 Server, Android 7.0 Nougat
+
+For a full list, please see https://github.com/nextcloud/android/milestone/88
+
+## 3.26.0 (September 16, 2023)
+
+- image editing
+- image details, with map
+- show other Nextcloud apps
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/84
+
+## 3.25.0 (June 13, 2023)
+
+- show Groupfolder
+- Tag in file listing
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/81
+
+## 3.24.1 (February 21, 2023)
+
+- Fix crash in previous version when connecting to old server versions
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/80
+
+## 3.24.0 (February 13, 2023)
+
+- Several performance optimizations by @starypatyk
+- Support multi-page document scanning and exporting to PDF
+- Many small bugfixes and improvements
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/78
+
+## 3.23.1 (December 21, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/79
+
+## 3.23.0 (December 1, 2022)
+
+- File actions menu redesign
+- Allow adding shortcuts to Home screen (@newhinton)
+- Many bugfixes and performance optimizations
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/74
+
+## 3.22.3 (November 3, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/76
+
+## 3.22.2 (October 24, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/75
+
+## 3.22.1 (October 20, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/73
+
+## 3.22.0 (October 19, 2022)
+
+- Material 3 UI revamp
+- Dashboard widgets for Android launcher
+- New tiled design for media view
+- Many bugfixes and improvements
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/70
+
+## 3.21.2 (September 1, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+## 3.21.1 (August 26, 2022)
+
+- Bug fixes
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/72
+
+## 3.21.0 (August 8, 2022)
+
+- Fast scroll for all lists
+- Media view
+   - Group photos as timeline by month
+   - Filter options
+- File locking
+- File export to sdcard
+- Many bugfixes and improvements
+
+Minimum: NC 16 Server, Android 6.0 Marshmallow
+
+For a full list, please see https://github.com/nextcloud/android/milestone/66
+
 ## 3.20.3 (June 13th, 2022)
 
 - Minor bug fixes

@@ -1,28 +1,14 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * @author Chris Narkiewicz <hello@ezaquarii.com>
- *
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.adapter
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -40,8 +26,7 @@ import com.owncloud.android.datamodel.FileDataStorageManager
 import com.owncloud.android.datamodel.ThumbnailsCacheManager.InitDiskCacheTask
 import com.owncloud.android.ui.interfaces.UnifiedSearchListInterface
 import com.owncloud.android.ui.unifiedsearch.UnifiedSearchSection
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 
 /**
  * This Adapter populates a SectionedRecyclerView with search results by unified search
@@ -50,11 +35,11 @@ import com.owncloud.android.utils.theme.ThemeDrawableUtils
 class UnifiedSearchListAdapter(
     private val storageManager: FileDataStorageManager,
     private val listInterface: UnifiedSearchListInterface,
+    private val filesAction: UnifiedSearchItemViewHolder.FilesAction,
     private val user: User,
     private val clientFactory: ClientFactory,
     private val context: Context,
-    private val themeColorUtils: ThemeColorUtils,
-    private val themeDrawableUtils: ThemeDrawableUtils
+    private val viewThemeUtils: ViewThemeUtils
 ) : SectionedRecyclerViewAdapter<SectionedViewHolder>() {
     companion object {
         private const val VIEW_TYPE_EMPTY = Int.MAX_VALUE
@@ -67,13 +52,17 @@ class UnifiedSearchListAdapter(
         return when (viewType) {
             VIEW_TYPE_HEADER -> {
                 val binding = UnifiedSearchHeaderBinding.inflate(
-                    layoutInflater, parent, false
+                    layoutInflater,
+                    parent,
+                    false
                 )
-                UnifiedSearchHeaderViewHolder(binding, themeColorUtils, context)
+                UnifiedSearchHeaderViewHolder(binding, viewThemeUtils, context)
             }
             VIEW_TYPE_FOOTER -> {
                 val binding = UnifiedSearchFooterBinding.inflate(
-                    layoutInflater, parent, false
+                    layoutInflater,
+                    parent,
+                    false
                 )
                 UnifiedSearchFooterViewHolder(binding, context, listInterface)
             }
@@ -89,9 +78,9 @@ class UnifiedSearchListAdapter(
                     clientFactory,
                     storageManager,
                     listInterface,
+                    filesAction,
                     context,
-                    themeColorUtils,
-                    themeDrawableUtils
+                    viewThemeUtils
                 )
             }
             VIEW_TYPE_EMPTY -> {
@@ -152,6 +141,7 @@ class UnifiedSearchListAdapter(
         }
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     fun setData(sections: List<UnifiedSearchSection>) {
         this.sections = sections
         notifyDataSetChanged()

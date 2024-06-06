@@ -1,25 +1,10 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * @author TSI-mc
- * Copyright (C) 2020 Tobias Kaminsky
- * Copyright (C) 2020 Nextcloud GmbH
- * Copyright (C) 2021 TSI-mc
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2021 TSI-mc
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.fragment
 
@@ -37,26 +22,26 @@ import androidx.test.espresso.matcher.ViewMatchers.withText
 import com.google.android.apps.common.testing.accessibility.framework.AccessibilityCheckResultBaseUtils.matchesCheckNames
 import com.google.android.apps.common.testing.accessibility.framework.AccessibilityCheckResultUtils.matchesViews
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.nextcloud.client.RetryTestRule
-import com.nextcloud.client.TestActivity
+import com.nextcloud.test.RetryTestRule
+import com.nextcloud.test.TestActivity
 import com.owncloud.android.AbstractIT
 import com.owncloud.android.R
 import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.lib.resources.shares.OCShare
-import com.owncloud.android.lib.resources.shares.OCShare.CREATE_PERMISSION_FLAG
-import com.owncloud.android.lib.resources.shares.OCShare.DELETE_PERMISSION_FLAG
-import com.owncloud.android.lib.resources.shares.OCShare.MAXIMUM_PERMISSIONS_FOR_FILE
-import com.owncloud.android.lib.resources.shares.OCShare.MAXIMUM_PERMISSIONS_FOR_FOLDER
-import com.owncloud.android.lib.resources.shares.OCShare.NO_PERMISSION
-import com.owncloud.android.lib.resources.shares.OCShare.READ_PERMISSION_FLAG
-import com.owncloud.android.lib.resources.shares.OCShare.SHARE_PERMISSION_FLAG
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.CREATE_PERMISSION_FLAG
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.DELETE_PERMISSION_FLAG
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.MAXIMUM_PERMISSIONS_FOR_FILE
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.MAXIMUM_PERMISSIONS_FOR_FOLDER
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.NO_PERMISSION
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.READ_PERMISSION_FLAG
+import com.owncloud.android.lib.resources.shares.OCShare.Companion.SHARE_PERMISSION_FLAG
 import com.owncloud.android.lib.resources.shares.ShareType
 import com.owncloud.android.ui.activity.FileDisplayActivity
 import com.owncloud.android.ui.fragment.util.SharingMenuHelper
 import com.owncloud.android.utils.ScreenshotTest
-import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.allOf
 import org.hamcrest.CoreMatchers.anyOf
+import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.not
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -84,6 +69,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
             remoteId = "00000001"
             parentId = activity.storageManager.getFileByEncryptedRemotePath("/").fileId
             permissions = OCFile.PERMISSION_CAN_RESHARE
+            fileDataStorageManager.saveFile(this)
         }
 
         folder = OCFile("/test").apply {
@@ -107,12 +93,12 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         show(file)
     }
 
-    @Test
-    @ScreenshotTest
-    @Suppress("MagicNumber")
     /**
      * Use same values as {@link OCFileListFragmentStaticServerIT showSharedFiles }
      */
+    @Test
+    @ScreenshotTest
+    @Suppress("MagicNumber")
     fun listSharesFileAllShareTypes() {
         OCShare(file.decryptedRemotePath).apply {
             remoteId = 1
@@ -166,7 +152,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         OCShare(file.decryptedRemotePath).apply {
             remoteId = 7
             shareType = ShareType.CIRCLE
-            sharedWithDisplayName = "Personal circle"
+            sharedWithDisplayName = "Personal team"
             permissions = SHARE_PERMISSION_FLAG
             userId = getUserId(user)
             activity.storageManager.saveShare(this)
@@ -175,7 +161,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         OCShare(file.decryptedRemotePath).apply {
             remoteId = 8
             shareType = ShareType.CIRCLE
-            sharedWithDisplayName = "Public circle"
+            sharedWithDisplayName = "Public team"
             permissions = SHARE_PERMISSION_FLAG
             userId = getUserId(user)
             activity.storageManager.saveShare(this)
@@ -184,7 +170,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         OCShare(file.decryptedRemotePath).apply {
             remoteId = 9
             shareType = ShareType.CIRCLE
-            sharedWithDisplayName = "Closed circle"
+            sharedWithDisplayName = "Closed team"
             permissions = SHARE_PERMISSION_FLAG
             userId = getUserId(user)
             activity.storageManager.saveShare(this)
@@ -193,7 +179,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         OCShare(file.decryptedRemotePath).apply {
             remoteId = 10
             shareType = ShareType.CIRCLE
-            sharedWithDisplayName = "Secret circle"
+            sharedWithDisplayName = "Secret team"
             permissions = SHARE_PERMISSION_FLAG
             userId = getUserId(user)
             activity.storageManager.saveShare(this)
@@ -230,10 +216,10 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         screenshot(activity)
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // public link and email are handled the same way
     // for advanced permissions
+    @Test
+    @Suppress("MagicNumber")
     fun publicLinkOptionMenuFolderAdvancePermission() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -327,10 +313,10 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         onView(ViewMatchers.withId(R.id.share_process_select_exp_date)).check(matches(withText("")))
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // public link and email are handled the same way
     // for send new email
+    @Test
+    @Suppress("MagicNumber")
     fun publicLinkOptionMenuFolderSendNewEmail() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -352,17 +338,18 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         val secondary = FileDetailFragment.newInstance(file, parentFolder, user)
         activity.addSecondaryFragment(secondary, FileDisplayActivity.TAG_LIST_OF_FILES)
         activity.addView(
-            FloatingActionButton(activity).apply { // needed for some reason
+            FloatingActionButton(activity).apply {
+                // needed for some reason
                 visibility = View.GONE
                 id = R.id.fab_main
             }
         )
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // public link and email are handled the same way
     // for advanced permissions
+    @Test
+    @Suppress("MagicNumber")
     fun publicLinkOptionMenuFileAdvancePermission() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -447,10 +434,10 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         onView(ViewMatchers.withId(R.id.share_process_select_exp_date)).check(matches(withText("")))
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // public link and email are handled the same way
     // for send new email
+    @Test
+    @Suppress("MagicNumber")
     fun publicLinkOptionMenuFileSendNewEmail() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -467,14 +454,14 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         verifySendNewEmail(sut, publicShare)
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // also applies for
     // group
     // conversation
     // circle
     // federated share
     // for advanced permissions
+    @Test
+    @Suppress("MagicNumber")
     fun userOptionMenuFileAdvancePermission() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         suppressFDFAccessibilityChecks()
@@ -557,7 +544,7 @@ class FileDetailSharingFragmentIT : AbstractIT() {
                 allOf(
                     anyOf(
                         matchesCheckNames(`is`("TouchTargetSizeCheck")),
-                        matchesCheckNames(`is`("SpeakableTextPresentCheck")),
+                        matchesCheckNames(`is`("SpeakableTextPresentCheck"))
                     ),
                     anyOf(
                         matchesViews(ViewMatchers.withId(R.id.favorite)),
@@ -568,14 +555,14 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         }
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // also applies for
     // group
     // conversation
     // circle
     // federated share
     // for send new email
+    @Test
+    @Suppress("MagicNumber")
     fun userOptionMenuFileSendNewEmail() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -592,14 +579,14 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         verifySendNewEmail(sut, userShare)
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // also applies for
     // group
     // conversation
     // circle
     // federated share
     // for advanced permissions
+    @Test
+    @Suppress("MagicNumber")
     fun userOptionMenuFolderAdvancePermission() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -709,14 +696,14 @@ class FileDetailSharingFragmentIT : AbstractIT() {
         waitForIdleSync()
     }
 
-    @Test
-    @Suppress("MagicNumber")
     // also applies for
     // group
     // conversation
     // circle
     // federated share
     // for send new email
+    @Test
+    @Suppress("MagicNumber")
     fun userOptionMenuFolderSendNewEmail() {
         val sut = FileDetailSharingFragment.newInstance(file, user)
         activity.addFragment(sut)
@@ -752,7 +739,6 @@ class FileDetailSharingFragmentIT : AbstractIT() {
 
     @Test
     fun testUploadAndEditingSharePermissions() {
-
         val share = OCShare().apply {
             permissions = MAXIMUM_PERMISSIONS_FOR_FOLDER
         }

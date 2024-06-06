@@ -3,21 +3,12 @@
  * Nextcloud Android client application
  *
  * @author Tobias Kaminsky
+ * @author TSI-mc
  * Copyright (C) 2019 Tobias Kaminsky
  * Copyright (C) 2019 Nextcloud GmbH
+ * Copyright (C) 2023 TSI-mc
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.dialog;
@@ -31,15 +22,15 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager.LayoutParams;
-import android.widget.Button;
 
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.common.collect.Sets;
 import com.nextcloud.client.account.CurrentAccountProvider;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.di.Injectable;
 import com.nextcloud.client.network.ClientFactory;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.ChooseTemplateBinding;
@@ -58,10 +49,9 @@ import com.owncloud.android.ui.activity.RichDocumentsEditorWebView;
 import com.owncloud.android.ui.adapter.RichDocumentsTemplateAdapter;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.FileStorageUtils;
+import com.owncloud.android.utils.KeyboardUtils;
 import com.owncloud.android.utils.NextcloudServer;
-import com.owncloud.android.utils.theme.ThemeButtonUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeTextInputUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -86,17 +76,20 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
     private static final String TAG = ChooseRichDocumentsTemplateDialogFragment.class.getSimpleName();
     private static final String DOT = ".";
     public static final int SINGLE_TEMPLATE = 1;
+    private static final String WAIT_DIALOG_TAG = "WAIT";
+
+    private Set<String> fileNames;
 
     @Inject CurrentAccountProvider currentAccount;
     @Inject ClientFactory clientFactory;
-    @Inject ThemeColorUtils themeColorUtils;
-    @Inject ThemeButtonUtils themeButtonUtils;
-    @Inject ThemeTextInputUtils themeTextInputUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
     @Inject FileDataStorageManager fileDataStorageManager;
+    @Inject KeyboardUtils keyboardUtils;
     private RichDocumentsTemplateAdapter adapter;
     private OCFile parentFolder;
     private OwnCloudClient client;
-    private Button positiveButton;
+    private MaterialButton positiveButton;
+    private DialogFragment waitDialog;
 
     public enum Type {
         DOCUMENT,
@@ -122,14 +115,26 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
 
         AlertDialog alertDialog = (AlertDialog) getDialog();
 
-        positiveButton = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
-        themeButtonUtils.themeBorderlessButton(themeColorUtils,
-                                               positiveButton,
-                                               alertDialog.getButton(AlertDialog.BUTTON_NEUTRAL));
-        positiveButton.setOnClickListener(this);
-        positiveButton.setEnabled(false);
+        if (alertDialog != null) {
+            positiveButton = (MaterialButton) alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            viewThemeUtils.material.colorMaterialButtonPrimaryTonal(positiveButton);
+
+            MaterialButton negativeButton = (MaterialButton) alertDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (negativeButton != null) {
+                viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(negativeButton);
+            }
+
+            positiveButton.setOnClickListener(this);
+            positiveButton.setEnabled(false);
+        }
 
         checkEnablingCreateButton();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        keyboardUtils.showKeyboardForEditText(requireDialog().getWindow(), binding.filename);
     }
 
     @NonNull
@@ -151,9 +156,9 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
             throw new RuntimeException(e); // we'll NPE without the client
         }
 
-        parentFolder = arguments.getParcelable(ARG_PARENT_FOLDER);
+        parentFolder = BundleExtensionsKt.getParcelableArgument(arguments, ARG_PARENT_FOLDER, OCFile.class);
         List<OCFile> folderContent = fileDataStorageManager.getFolderContent(parentFolder, false);
-        Set<String> fileNames = Sets.newHashSetWithExpectedSize(folderContent.size());
+        fileNames = Sets.newHashSetWithExpectedSize(folderContent.size());
 
         for (OCFile file : folderContent) {
             fileNames.add(file.getFileName());
@@ -164,11 +169,7 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
         binding = ChooseTemplateBinding.inflate(inflater, null, false);
         View view = binding.getRoot();
 
-        binding.filename.requestFocus();
-        themeTextInputUtils.colorTextInput(binding.filenameContainer,
-                                           binding.filename,
-                                           themeColorUtils.primaryColor(getContext()),
-                                           themeColorUtils.primaryAccentColor(getContext()));
+        viewThemeUtils.material.colorTextInputLayout(binding.filenameContainer);
 
         Type type = Type.valueOf(arguments.getString(ARG_TYPE));
         new FetchTemplateTask(this, client).execute(type);
@@ -180,7 +181,7 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
                                                    getContext(),
                                                    currentAccount,
                                                    clientFactory,
-                                                   themeColorUtils);
+                                                   viewThemeUtils);
         binding.list.setAdapter(adapter);
 
         binding.filename.addTextChangedListener(new TextWatcher() {
@@ -189,49 +190,29 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
 
             }
 
-            /**
-             * When user enters an already taken file name, a message is shown. Otherwise, the
-             * message is ensured to be hidden.
-             */
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                String newFileName = "";
-                if (binding.filename.getText() != null) {
-                    newFileName = binding.filename.getText().toString().trim();
-                }
-
-                if (fileNames.contains(newFileName)) {
-                    binding.filenameContainer.setError(getText(R.string.file_already_exists));
-                    positiveButton.setEnabled(false);
-                } else if (binding.filenameContainer.getError() != null) {
-                    binding.filenameContainer.setError(null);
-                    // Called to remove extra padding
-                    binding.filenameContainer.setErrorEnabled(false);
-                    positiveButton.setEnabled(true);
-                }
+                // not needed
             }
 
             @Override
             public void afterTextChanged(Editable s) {
-
+                checkEnablingCreateButton();
             }
         });
 
+        int titleTextId = getTitle(type);
+
         // Build the dialog
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity);
         builder.setView(view)
             .setPositiveButton(R.string.create, null)
-            .setNeutralButton(R.string.common_cancel, null)
-            .setTitle(getTitle(type));
-        Dialog dialog = builder.create();
+            .setNegativeButton(R.string.common_cancel, null)
+            .setTitle(titleTextId);
 
-        Window window = dialog.getWindow();
+        viewThemeUtils.dialog.colorMaterialAlertDialogBackground(activity, builder);
 
-        if (window != null) {
-            window.setSoftInputMode(LayoutParams.SOFT_INPUT_STATE_VISIBLE);
-        }
-
-        return dialog;
+        return builder.create();
     }
 
     private int getTitle(Type type) {
@@ -253,6 +234,8 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
     }
 
     private void createFromTemplate(Template template, String path) {
+        waitDialog = IndeterminateProgressDialog.newInstance(R.string.wait_a_moment, false);
+        waitDialog.show(getParentFragmentManager(), WAIT_DIALOG_TAG);
         new CreateFileFromTemplateTask(this, client, template, path, currentAccount.getUser()).execute();
     }
 
@@ -261,9 +244,20 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
         adapter.notifyDataSetChanged();
     }
 
+    private String getFileNameText() {
+        String result = "";
+        Editable text = binding.filename.getText();
+
+        if (text != null) {
+            result = text.toString();
+        }
+
+        return result;
+    }
+
     @Override
     public void onClick(View v) {
-        String name = binding.filename.getText().toString();
+        String name = getFileNameText();
         String path = parentFolder.getRemotePath() + name;
 
         Template selectedTemplate = adapter.getSelectedTemplate();
@@ -291,23 +285,41 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
     }
 
     private void prefillFilenameIfEmpty(Template template) {
-        String name = binding.filename.getText().toString();
+        String name = getFileNameText();
+
         if (name.isEmpty() || name.equalsIgnoreCase(DOT + template.getExtension())) {
             binding.filename.setText(String.format("%s.%s", template.getName(), template.getExtension()));
         }
 
-        final int dotIndex = binding.filename.getText().toString().lastIndexOf('.');
+        final int dotIndex = getFileNameText().lastIndexOf('.');
         if (dotIndex >= 0) {
             binding.filename.setSelection(dotIndex);
         }
     }
 
     private void checkEnablingCreateButton() {
-        Template selectedTemplate = adapter.getSelectedTemplate();
-        String name = binding.filename.getText().toString();
+        if (positiveButton != null) {
+            Template selectedTemplate = adapter.getSelectedTemplate();
+            String name = getFileNameText();
+            boolean isNameJustExtension = selectedTemplate != null && name.equalsIgnoreCase(
+                DOT + selectedTemplate.getExtension());
+            boolean isNameEmpty = name.isEmpty() || isNameJustExtension;
+            boolean state = selectedTemplate != null && !isNameEmpty && !fileNames.contains(name);
 
-        positiveButton.setEnabled(selectedTemplate != null && !name.isEmpty() &&
-                                      !name.equalsIgnoreCase(DOT + selectedTemplate.getExtension()));
+            positiveButton.setEnabled(selectedTemplate != null && !name.isEmpty() &&
+                                          !name.equalsIgnoreCase(DOT + selectedTemplate.getExtension()));
+            positiveButton.setEnabled(state);
+            positiveButton.setClickable(state);
+            binding.filenameContainer.setErrorEnabled(!state);
+
+            if (!state) {
+                if (isNameEmpty) {
+                    binding.filenameContainer.setError(getText(R.string.filename_empty));
+                } else {
+                    binding.filenameContainer.setError(getText(R.string.file_already_exists));
+                }
+            }
+        }
     }
 
     private static class CreateFileFromTemplateTask extends AsyncTask<Void, Void, String> {
@@ -323,7 +335,7 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
                                    Template template,
                                    String path,
                                    User user
-        ) {
+                                  ) {
             this.client = client;
             this.chooseTemplateDialogFragmentWeakReference = new WeakReference<>(chooseTemplateDialogFragment);
             this.template = template;
@@ -366,8 +378,13 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
             ChooseRichDocumentsTemplateDialogFragment fragment = chooseTemplateDialogFragmentWeakReference.get();
 
             if (fragment != null && fragment.isAdded()) {
+                if (fragment.waitDialog != null) {
+                    fragment.waitDialog.dismiss();
+                }
+
                 if (url.isEmpty()) {
-                    DisplayUtils.showSnackMessage(fragment.binding.list, R.string.error_creating_file_from_template);
+                    fragment.dismiss();
+                    DisplayUtils.showSnackMessage(fragment.requireActivity(), R.string.error_creating_file_from_template);
                 } else {
                     Intent collaboraWebViewIntent = new Intent(MainApp.getAppContext(), RichDocumentsEditorWebView.class);
                     collaboraWebViewIntent.putExtra(ExternalSiteWebView.EXTRA_TITLE, "Collabora");
@@ -418,7 +435,8 @@ public class ChooseRichDocumentsTemplateDialogFragment extends DialogFragment im
 
             if (fragment != null) {
                 if (templateList.isEmpty()) {
-                    DisplayUtils.showSnackMessage(fragment.binding.list, R.string.error_retrieving_templates);
+                    fragment.dismiss();
+                    DisplayUtils.showSnackMessage(fragment.requireActivity(), R.string.error_retrieving_templates);
                 } else {
                     if (templateList.size() == SINGLE_TEMPLATE) {
                         fragment.onTemplateChosen(templateList.get(0));

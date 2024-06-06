@@ -1,27 +1,15 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author masensio
- *   @author David A. Velasco
- *   @author Andy Scherzinger
- *   @author TSI-mc
- *   Copyright (C) 2015 ownCloud Inc.
- *   Copyright (C) 2018 Andy Scherzinger
- *   Copyright (C) 2021 TSI-mc
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018-2023 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2021 TSI-mc
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2017-2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2015 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.services;
 
 import android.accounts.Account;
@@ -41,8 +29,9 @@ import android.util.Pair;
 
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
-import com.nextcloud.java.util.Optional;
+import com.nextcloud.utils.extensions.IntentExtensionsKt;
 import com.owncloud.android.MainApp;
+import com.owncloud.android.datamodel.ArbitraryDataProvider;
 import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.lib.common.OwnCloudAccount;
@@ -54,6 +43,7 @@ import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.lib.resources.files.RestoreFileVersionRemoteOperation;
 import com.owncloud.android.lib.resources.files.model.FileVersion;
+import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.lib.resources.shares.ShareType;
 import com.owncloud.android.lib.resources.users.GetUserInfoRemoteOperation;
 import com.owncloud.android.operations.CheckCurrentCredentialsOperation;
@@ -75,6 +65,7 @@ import com.owncloud.android.operations.UpdateShareViaLinkOperation;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
@@ -110,6 +101,7 @@ public class OperationsService extends Service {
     public static final String EXTRA_IN_BACKGROUND = "IN_BACKGROUND";
 
     public static final String ACTION_CREATE_SHARE_VIA_LINK = "CREATE_SHARE_VIA_LINK";
+    public static final String ACTION_CREATE_SECURE_FILE_DROP = "CREATE_SECURE_FILE_DROP";
     public static final String ACTION_CREATE_SHARE_WITH_SHAREE = "CREATE_SHARE_WITH_SHAREE";
     public static final String ACTION_UNSHARE = "UNSHARE";
     public static final String ACTION_UPDATE_PUBLIC_SHARE = "UPDATE_PUBLIC_SHARE";
@@ -137,6 +129,7 @@ public class OperationsService extends Service {
         mUndispatchedFinishedOperations = new ConcurrentHashMap<>();
 
     @Inject UserAccountManager accountManager;
+    @Inject ArbitraryDataProvider arbitraryDataProvider;
 
     private static class Target {
         public Uri mServerUrl;
@@ -188,7 +181,8 @@ public class OperationsService extends Service {
                 Log_OC.e(TAG, "Not enough information provided in intent");
                 return START_NOT_STICKY;
             }
-            Account account = intent.getParcelableExtra(EXTRA_ACCOUNT);
+
+            Account account = IntentExtensionsKt.getParcelableArgument(intent, EXTRA_ACCOUNT, Account.class);
             String remotePath = intent.getStringExtra(EXTRA_REMOTE_PATH);
 
             Pair<Account, String> itemSyncKey = new Pair<>(account, remotePath);
@@ -495,7 +489,7 @@ public class OperationsService extends Service {
                 Log_OC.e(TAG, "Not enough information provided in intent");
 
             } else {
-                Account account = operationIntent.getParcelableExtra(EXTRA_ACCOUNT);
+                Account account = IntentExtensionsKt.getParcelableArgument(operationIntent, EXTRA_ACCOUNT, Account.class);
                 User user = toUser(account);
                 String serverUrl = operationIntent.getStringExtra(EXTRA_SERVER_URL);
                 target = new Target(account, (serverUrl == null) ? null : Uri.parse(serverUrl));
@@ -517,6 +511,13 @@ public class OperationsService extends Service {
                         if (!TextUtils.isEmpty(remotePath)) {
                             operation = new CreateShareViaLinkOperation(remotePath, password, fileDataStorageManager);
                         }
+                        break;
+
+                    case ACTION_CREATE_SECURE_FILE_DROP:
+                        remotePath = operationIntent.getStringExtra(EXTRA_REMOTE_PATH);
+                        operation = new CreateShareViaLinkOperation(remotePath,
+                                                                    fileDataStorageManager,
+                                                                    OCShare.CREATE_PERMISSION_FLAG);
                         break;
 
                     case ACTION_UPDATE_PUBLIC_SHARE:
@@ -581,7 +582,7 @@ public class OperationsService extends Service {
                     case ACTION_CREATE_SHARE_WITH_SHAREE:
                         remotePath = operationIntent.getStringExtra(EXTRA_REMOTE_PATH);
                         String shareeName = operationIntent.getStringExtra(EXTRA_SHARE_WITH);
-                        shareType = (ShareType) operationIntent.getSerializableExtra(EXTRA_SHARE_TYPE);
+                        shareType = IntentExtensionsKt.getSerializableArgument(operationIntent, EXTRA_SHARE_TYPE, ShareType.class);
                         int permissions = operationIntent.getIntExtra(EXTRA_SHARE_PERMISSIONS, -1);
                         String noteMessage = operationIntent.getStringExtra(EXTRA_SHARE_NOTE);
                         String sharePassword = operationIntent.getStringExtra(EXTRA_SHARE_PASSWORD);
@@ -599,7 +600,10 @@ public class OperationsService extends Service {
                                                                    sharePassword,
                                                                    expirationDateInMillis,
                                                                    hideFileDownload,
-                                                                   fileDataStorageManager);
+                                                                   fileDataStorageManager,
+                                                                   getApplicationContext(),
+                                                                   user,
+                                                                   arbitraryDataProvider);
 
                             if (operationIntent.hasExtra(EXTRA_SHARE_PUBLIC_LABEL)) {
                                 createShareWithShareeOperation.setLabel(operationIntent.getStringExtra(EXTRA_SHARE_PUBLIC_LABEL));
@@ -643,7 +647,11 @@ public class OperationsService extends Service {
                         shareId = operationIntent.getLongExtra(EXTRA_SHARE_ID, -1);
 
                         if (shareId > 0) {
-                            operation = new UnshareOperation(remotePath, shareId, fileDataStorageManager);
+                            operation = new UnshareOperation(remotePath,
+                                                             shareId,
+                                                             fileDataStorageManager,
+                                                             user,
+                                                             getApplicationContext());
                         }
                         break;
 
@@ -663,7 +671,7 @@ public class OperationsService extends Service {
 
                     case ACTION_REMOVE:
                         // Remove file or folder
-                        OCFile file = operationIntent.getParcelableExtra(EXTRA_FILE);
+                        OCFile file = IntentExtensionsKt.getParcelableArgument(operationIntent, EXTRA_FILE, OCFile.class);
                         boolean onlyLocalCopy = operationIntent.getBooleanExtra(EXTRA_REMOVE_ONLY_LOCAL, false);
                         boolean inBackground = operationIntent.getBooleanExtra(EXTRA_IN_BACKGROUND, false);
                         operation = new RemoveFileOperation(file,
@@ -720,8 +728,8 @@ public class OperationsService extends Service {
                         break;
 
                     case ACTION_RESTORE_VERSION:
-                        FileVersion fileVersion = operationIntent.getParcelableExtra(EXTRA_FILE_VERSION);
-                        operation = new RestoreFileVersionRemoteOperation(fileVersion.getRemoteId(),
+                        FileVersion fileVersion = IntentExtensionsKt.getParcelableArgument(operationIntent, EXTRA_FILE_VERSION, FileVersion.class);
+                        operation = new RestoreFileVersionRemoteOperation(fileVersion.getLocalId(),
                                                                           fileVersion.getFileName());
                         break;
 

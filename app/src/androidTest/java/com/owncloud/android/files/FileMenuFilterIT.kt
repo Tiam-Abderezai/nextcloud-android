@@ -1,49 +1,40 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Álvaro Brey Vilas
- * Copyright (C) 2022 Álvaro Brey Vilas
- * Copyright (C) 2022 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 package com.owncloud.android.files
 
-import android.view.Menu
-import androidx.appcompat.view.menu.MenuBuilder
 import androidx.test.core.app.launchActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.nextcloud.client.TestActivity
 import com.nextcloud.client.account.User
+import com.nextcloud.client.jobs.download.FileDownloadWorker
+import com.nextcloud.client.jobs.upload.FileUploadHelper
+import com.nextcloud.test.TestActivity
+import com.nextcloud.utils.EditorUtils
 import com.owncloud.android.AbstractIT
 import com.owncloud.android.R
+import com.owncloud.android.datamodel.ArbitraryDataProvider
 import com.owncloud.android.datamodel.FileDataStorageManager
 import com.owncloud.android.datamodel.OCFile
-import com.owncloud.android.files.services.FileDownloader
-import com.owncloud.android.files.services.FileUploader
 import com.owncloud.android.lib.resources.files.model.FileLockType
 import com.owncloud.android.lib.resources.status.CapabilityBooleanType
 import com.owncloud.android.lib.resources.status.OCCapability
 import com.owncloud.android.services.OperationsService
 import com.owncloud.android.ui.activity.ComponentsGetter
+import com.owncloud.android.utils.MimeType
 import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
-import org.junit.Assert
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.SecureRandom
 
 @RunWith(AndroidJUnit4::class)
 class FileMenuFilterIT : AbstractIT() {
@@ -55,23 +46,32 @@ class FileMenuFilterIT : AbstractIT() {
     private lateinit var mockStorageManager: FileDataStorageManager
 
     @MockK
-    private lateinit var mockFileUploaderBinder: FileUploader.FileUploaderBinder
+    private lateinit var mockFileUploaderBinder: FileUploadHelper
 
     @MockK
-    private lateinit var mockFileDownloaderBinder: FileDownloader.FileDownloaderBinder
+    private lateinit var mockFileDownloadProgressListener: FileDownloadWorker.FileDownloadProgressListener
 
     @MockK
     private lateinit var mockOperationsServiceBinder: OperationsService.OperationsServiceBinder
+
+    @MockK
+    private lateinit var mockArbitraryDataProvider: ArbitraryDataProvider
+
+    private lateinit var editorUtils: EditorUtils
 
     @Before
     fun setup() {
         MockKAnnotations.init(this)
         every { mockFileUploaderBinder.isUploading(any(), any()) } returns false
-        every { mockComponentsGetter.fileUploaderBinder } returns mockFileUploaderBinder
-        every { mockFileDownloaderBinder.isDownloading(any(), any()) } returns false
-        every { mockComponentsGetter.fileDownloaderBinder } returns mockFileDownloaderBinder
+        every { mockComponentsGetter.fileUploaderHelper } returns mockFileUploaderBinder
+        every { mockFileDownloadProgressListener.isDownloading(any(), any()) } returns false
+        every { mockComponentsGetter.fileDownloadProgressListener } returns mockFileDownloadProgressListener
         every { mockOperationsServiceBinder.isSynchronizing(any(), any()) } returns false
         every { mockComponentsGetter.operationsServiceBinder } returns mockOperationsServiceBinder
+        every { mockStorageManager.getFileById(any()) } returns OCFile("/")
+        every { mockStorageManager.getFolderContent(any(), any()) } returns ArrayList<OCFile>()
+        every { mockArbitraryDataProvider.getValue(any<User>(), any()) } returns ""
+        editorUtils = EditorUtils(mockArbitraryDataProvider)
     }
 
     @Test
@@ -85,7 +85,7 @@ class FileMenuFilterIT : AbstractIT() {
         testLockingVisibilities(
             capability,
             file,
-            ExpectedLockVisibilities(lockFile = false, unlockFile = false, lockedBy = false, lockedUntil = false)
+            ExpectedLockVisibilities(lockFile = false, unlockFile = false)
         )
     }
 
@@ -101,7 +101,7 @@ class FileMenuFilterIT : AbstractIT() {
         testLockingVisibilities(
             capability,
             file,
-            ExpectedLockVisibilities(lockFile = true, unlockFile = false, lockedBy = false, lockedUntil = false)
+            ExpectedLockVisibilities(lockFile = true, unlockFile = false)
         )
     }
 
@@ -124,7 +124,7 @@ class FileMenuFilterIT : AbstractIT() {
         testLockingVisibilities(
             capability,
             file,
-            ExpectedLockVisibilities(lockFile = false, unlockFile = true, lockedBy = true, lockedUntil = true)
+            ExpectedLockVisibilities(lockFile = false, unlockFile = true)
         )
     }
 
@@ -146,28 +146,199 @@ class FileMenuFilterIT : AbstractIT() {
         testLockingVisibilities(
             capability,
             file,
-            ExpectedLockVisibilities(lockFile = false, unlockFile = false, lockedBy = true, lockedUntil = true)
+            ExpectedLockVisibilities(lockFile = false, unlockFile = false)
         )
+    }
+
+    @Test
+    fun filter_unset_encryption() {
+        val capability = OCCapability().apply {
+            endToEndEncryption = CapabilityBooleanType.TRUE
+        }
+
+        val encryptedFolder = OCFile("/encryptedFolder/").apply {
+            isEncrypted = true
+            mimeType = MimeType.DIRECTORY
+            fileLength = SecureRandom().nextLong()
+        }
+
+        val encryptedEmptyFolder = OCFile("/encryptedFolder/").apply {
+            isEncrypted = true
+            mimeType = MimeType.DIRECTORY
+        }
+
+        val normalFolder = OCFile("/folder/").apply {
+            mimeType = MimeType.DIRECTORY
+            fileLength = SecureRandom().nextLong()
+        }
+
+        val normalEmptyFolder = OCFile("/folder/").apply {
+            mimeType = MimeType.DIRECTORY
+        }
+
+        configureCapability(capability)
+
+        launchActivity<TestActivity>().use {
+            it.onActivity { activity ->
+                val filterFactory =
+                    FileMenuFilter.Factory(mockStorageManager, activity, editorUtils)
+
+                var sut = filterFactory.newInstance(encryptedFolder, mockComponentsGetter, true, user)
+                var toHide = sut.getToHide(false)
+
+                // encrypted folder, with content
+                assertTrue(toHide.contains(R.id.action_unset_encrypted))
+                assertTrue(toHide.contains(R.id.action_encrypted))
+                assertTrue(toHide.contains(R.id.action_remove_file))
+
+                // encrypted, but empty folder
+                sut = filterFactory.newInstance(encryptedEmptyFolder, mockComponentsGetter, true, user)
+                toHide = sut.getToHide(false)
+
+                assertTrue(toHide.contains(R.id.action_unset_encrypted))
+                assertTrue(toHide.contains(R.id.action_remove_file))
+                assertTrue(toHide.contains(R.id.action_encrypted))
+
+                // regular folder, with content
+                sut = filterFactory.newInstance(normalFolder, mockComponentsGetter, true, user)
+                toHide = sut.getToHide(false)
+
+                assertTrue(toHide.contains(R.id.action_unset_encrypted))
+                assertTrue(toHide.contains(R.id.action_encrypted))
+                assertFalse(toHide.contains(R.id.action_remove_file))
+
+                // regular folder, without content
+                sut = filterFactory.newInstance(normalEmptyFolder, mockComponentsGetter, true, user)
+                toHide = sut.getToHide(false)
+
+                assertTrue(toHide.contains(R.id.action_unset_encrypted))
+                assertFalse(toHide.contains(R.id.action_encrypted))
+                assertFalse(toHide.contains(R.id.action_remove_file))
+            }
+        }
+    }
+
+    @Test
+    fun filter_stream() {
+        val capability = OCCapability().apply {
+            endToEndEncryption = CapabilityBooleanType.TRUE
+        }
+
+        val encryptedVideo = OCFile("/e2e/1.mpg").apply {
+            isEncrypted = true
+            mimeType = "video/mpeg"
+        }
+
+        val normalVideo = OCFile("/folder/2.mpg").apply {
+            mimeType = "video/mpeg"
+            fileLength = SecureRandom().nextLong()
+        }
+
+        configureCapability(capability)
+
+        launchActivity<TestActivity>().use {
+            it.onActivity { activity ->
+                val filterFactory =
+                    FileMenuFilter.Factory(mockStorageManager, activity, editorUtils)
+
+                var sut = filterFactory.newInstance(encryptedVideo, mockComponentsGetter, true, user)
+                var toHide = sut.getToHide(false)
+
+                // encrypted video, with content
+                assertTrue(toHide.contains(R.id.action_stream_media))
+
+                // regular video, with content
+                sut = filterFactory.newInstance(normalVideo, mockComponentsGetter, true, user)
+                toHide = sut.getToHide(false)
+
+                assertFalse(toHide.contains(R.id.action_stream_media))
+            }
+        }
+    }
+
+    @Test
+    fun filter_select_all() {
+        configureCapability(OCCapability())
+
+        // not in single file fragment -> multi selection is possible under certain circumstances
+
+        launchActivity<TestActivity>().use {
+            it.onActivity { activity ->
+                val filterFactory = FileMenuFilter.Factory(mockStorageManager, activity, editorUtils)
+
+                val files = listOf(OCFile("/foo.bin"), OCFile("/bar.bin"), OCFile("/baz.bin"))
+
+                // single file, not in multi selection
+                // *Select all* and *Deselect all* should stay hidden
+                var sut = filterFactory.newInstance(files.first(), mockComponentsGetter, true, user)
+
+                var toHide = sut.getToHide(false)
+                assertTrue(toHide.contains(R.id.action_select_all_action_menu))
+                assertTrue(toHide.contains(R.id.action_deselect_all_action_menu))
+
+                // multiple files, all selected in multi selection
+                // *Deselect all* shown, *Select all* not
+                sut = filterFactory.newInstance(files.size, files, mockComponentsGetter, false, user)
+
+                toHide = sut.getToHide(false)
+                assertTrue(toHide.contains(R.id.action_select_all_action_menu))
+                assertFalse(toHide.contains(R.id.action_deselect_all_action_menu))
+
+                // multiple files, all but one selected
+                // both *Select all* and *Deselect all* should be shown
+                sut = filterFactory.newInstance(files.size + 1, files, mockComponentsGetter, false, user)
+
+                toHide = sut.getToHide(false)
+                assertFalse(toHide.contains(R.id.action_select_all_action_menu))
+                assertFalse(toHide.contains(R.id.action_deselect_all_action_menu))
+            }
+        }
+    }
+
+    fun filter_select_all_singleFileFragment() {
+        configureCapability(OCCapability())
+
+        // in single file fragment (e.g. FileDetailFragment or PreviewImageFragment), selecting multiple files
+        // is not possible -> *Select all* and *Deselect all* options should be hidden
+
+        launchActivity<TestActivity>().use {
+            it.onActivity { activity ->
+                val filterFactory = FileMenuFilter.Factory(mockStorageManager, activity, editorUtils)
+
+                val files = listOf(OCFile("/foo.bin"), OCFile("/bar.bin"), OCFile("/baz.bin"))
+
+                // single file
+                var sut = filterFactory.newInstance(files.first(), mockComponentsGetter, true, user)
+
+                var toHide = sut.getToHide(true)
+                assertTrue(toHide.contains(R.id.action_select_all_action_menu))
+                assertTrue(toHide.contains(R.id.action_deselect_all_action_menu))
+
+                // multiple files, all selected
+                sut = filterFactory.newInstance(files.size, files, mockComponentsGetter, false, user)
+
+                toHide = sut.getToHide(true)
+                assertTrue(toHide.contains(R.id.action_select_all_action_menu))
+                assertTrue(toHide.contains(R.id.action_deselect_all_action_menu))
+
+                // multiple files, all but one selected
+                sut = filterFactory.newInstance(files.size + 1, files, mockComponentsGetter, false, user)
+
+                toHide = sut.getToHide(true)
+                assertTrue(toHide.contains(R.id.action_select_all_action_menu))
+                assertTrue(toHide.contains(R.id.action_deselect_all_action_menu))
+            }
+        }
     }
 
     private data class ExpectedLockVisibilities(
         val lockFile: Boolean,
-        val unlockFile: Boolean,
-        val lockedBy: Boolean,
-        val lockedUntil: Boolean
+        val unlockFile: Boolean
     )
 
     private fun configureCapability(capability: OCCapability) {
         every { mockStorageManager.getCapability(any<User>()) } returns capability
         every { mockStorageManager.getCapability(any<String>()) } returns capability
-        every { mockComponentsGetter.storageManager } returns mockStorageManager
-    }
-
-    private fun getMenu(activity: TestActivity): Menu {
-        val inflater = activity.menuInflater
-        val menu = MenuBuilder(activity)
-        inflater.inflate(R.menu.item_file, menu)
-        return menu
     }
 
     private fun testLockingVisibilities(
@@ -179,32 +350,20 @@ class FileMenuFilterIT : AbstractIT() {
 
         launchActivity<TestActivity>().use {
             it.onActivity { activity ->
-                val menu = getMenu(activity)
+                val filterFactory =
+                    FileMenuFilter.Factory(mockStorageManager, activity, editorUtils)
+                val sut = filterFactory.newInstance(file, mockComponentsGetter, true, user)
 
-                val sut = FileMenuFilter(file, mockComponentsGetter, activity, true, user)
+                val toHide = sut.getToHide(false)
 
-                sut.filter(menu, false)
-
-                Assert.assertEquals(
+                assertEquals(
                     expectedLockVisibilities.lockFile,
-                    menu.findItem(R.id.action_lock_file).isVisible
+                    !toHide.contains(R.id.action_lock_file)
                 )
-                Assert.assertEquals(
+                assertEquals(
                     expectedLockVisibilities.unlockFile,
-                    menu.findItem(R.id.action_unlock_file).isVisible
+                    !toHide.contains(R.id.action_unlock_file)
                 )
-                Assert.assertEquals(
-                    expectedLockVisibilities.lockedBy,
-                    menu.findItem(R.id.action_locked_by).isVisible
-                )
-                Assert.assertEquals(
-                    expectedLockVisibilities.lockedUntil,
-                    menu.findItem(R.id.action_locked_until).isVisible
-                )
-
-                // locked by and until should always be disabled, they're not real actions
-                Assert.assertFalse(menu.findItem(R.id.action_locked_by).isEnabled)
-                Assert.assertFalse(menu.findItem(R.id.action_locked_until).isEnabled)
             }
         }
     }

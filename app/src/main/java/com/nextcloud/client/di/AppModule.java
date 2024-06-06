@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.nextcloud.client.di;
@@ -39,6 +26,7 @@ import com.nextcloud.client.core.AsyncRunner;
 import com.nextcloud.client.core.Clock;
 import com.nextcloud.client.core.ClockImpl;
 import com.nextcloud.client.core.ThreadPoolAsyncRunner;
+import com.nextcloud.client.database.dao.ArbitraryDataDao;
 import com.nextcloud.client.device.DeviceInfo;
 import com.nextcloud.client.logger.FileLogHandler;
 import com.nextcloud.client.logger.Logger;
@@ -53,9 +41,12 @@ import com.nextcloud.client.notifications.AppNotificationManager;
 import com.nextcloud.client.notifications.AppNotificationManagerImpl;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.nextcloud.client.utils.Throttler;
+import com.owncloud.android.providers.UsersAndGroupsSearchConfig;
 import com.owncloud.android.authentication.PassCodeManager;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.FileDataStorageManager;
+import com.owncloud.android.datamodel.SyncedFolderProvider;
 import com.owncloud.android.datamodel.UploadsStorageManager;
 import com.owncloud.android.ui.activities.data.activities.ActivitiesRepository;
 import com.owncloud.android.ui.activities.data.activities.ActivitiesServiceApi;
@@ -64,13 +55,14 @@ import com.owncloud.android.ui.activities.data.activities.RemoteActivitiesReposi
 import com.owncloud.android.ui.activities.data.files.FilesRepository;
 import com.owncloud.android.ui.activities.data.files.FilesServiceApiImpl;
 import com.owncloud.android.ui.activities.data.files.RemoteFilesRepository;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.greenrobot.eventbus.EventBus;
 
 import java.io.File;
 
 import javax.inject.Named;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -114,9 +106,15 @@ class AppModule {
     }
 
     @Provides
-    ArbitraryDataProvider arbitraryDataProvider(Context context) {
-        final ContentResolver resolver = context.getContentResolver();
-        return new ArbitraryDataProvider(resolver);
+    ArbitraryDataProvider arbitraryDataProvider(ArbitraryDataDao dao) {
+        return new ArbitraryDataProviderImpl(dao);
+    }
+
+    @Provides
+    SyncedFolderProvider syncedFolderProvider(ContentResolver contentResolver,
+                                              AppPreferences appPreferences,
+                                              Clock clock) {
+        return new SyncedFolderProvider(contentResolver, appPreferences, clock);
     }
 
     @Provides
@@ -135,8 +133,8 @@ class AppModule {
     }
 
     @Provides
-    UploadsStorageManager uploadsStorageManager(Context context,
-                                                CurrentAccountProvider currentAccountProvider) {
+    UploadsStorageManager uploadsStorageManager(CurrentAccountProvider currentAccountProvider,
+                                                Context context) {
         return new UploadsStorageManager(currentAccountProvider, context.getContentResolver());
     }
 
@@ -229,11 +227,11 @@ class AppModule {
     @Singleton
     AppNotificationManager notificationsManager(Context context,
                                                 NotificationManager platformNotificationsManager,
-                                                ThemeColorUtils themeColorUtils) {
+                                                Provider<ViewThemeUtils> viewThemeUtilsProvider) {
         return new AppNotificationManagerImpl(context,
                                               context.getResources(),
                                               platformNotificationsManager,
-                                              themeColorUtils);
+                                              viewThemeUtilsProvider.get());
     }
 
     @Provides
@@ -251,4 +249,11 @@ class AppModule {
     PassCodeManager passCodeManager(AppPreferences preferences, Clock clock) {
         return new PassCodeManager(preferences, clock);
     }
+
+    @Provides
+    @Singleton
+    UsersAndGroupsSearchConfig userAndGroupSearchConfig() {
+        return new UsersAndGroupsSearchConfig();
+    }
+
 }

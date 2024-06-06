@@ -6,20 +6,9 @@
  * @author TSI-mc
  * Copyright (C) 2022 Tobias Kaminsky
  * Copyright (C) 2022 Nextcloud GmbH
- * Copyright (C) 2022 TSI-mc
+ * Copyright (C) 2023 TSI-mc
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.adapter
@@ -29,6 +18,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.VisibleForTesting
 import com.afollestad.sectionedrecyclerview.SectionedRecyclerViewAdapter
@@ -36,9 +26,10 @@ import com.afollestad.sectionedrecyclerview.SectionedViewHolder
 import com.nextcloud.client.account.User
 import com.nextcloud.client.preferences.AppPreferences
 import com.owncloud.android.databinding.GalleryHeaderBinding
-import com.owncloud.android.databinding.GridImageBinding
+import com.owncloud.android.databinding.GalleryRowBinding
 import com.owncloud.android.datamodel.FileDataStorageManager
 import com.owncloud.android.datamodel.GalleryItems
+import com.owncloud.android.datamodel.GalleryRow
 import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.ui.activity.ComponentsGetter
 import com.owncloud.android.ui.fragment.GalleryFragment
@@ -47,10 +38,8 @@ import com.owncloud.android.ui.fragment.SearchType
 import com.owncloud.android.ui.interfaces.OCFileListFragmentInterface
 import com.owncloud.android.utils.DisplayUtils
 import com.owncloud.android.utils.FileSortOrder
-import com.owncloud.android.utils.FileStorageUtils
 import com.owncloud.android.utils.MimeTypeUtil
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import me.zhanghai.android.fastscroll.PopupTextProvider
 import java.util.Calendar
 import java.util.Date
@@ -62,8 +51,9 @@ class GalleryAdapter(
     ocFileListFragmentInterface: OCFileListFragmentInterface,
     preferences: AppPreferences,
     transferServiceGetter: ComponentsGetter,
-    themeColorUtils: ThemeColorUtils,
-    themeDrawableUtils: ThemeDrawableUtils
+    viewThemeUtils: ViewThemeUtils,
+    var columns: Int,
+    private val defaultThumbnailSize: Int
 ) : SectionedRecyclerViewAdapter<SectionedViewHolder>(), CommonOCFileListAdapterInterface, PopupTextProvider {
     var files: List<GalleryItems> = mutableListOf()
     private val ocFileListDelegate: OCFileListDelegate
@@ -73,6 +63,7 @@ class GalleryAdapter(
         storageManager = transferServiceGetter.storageManager
 
         ocFileListDelegate = OCFileListDelegate(
+            transferServiceGetter.fileUploaderHelper,
             context,
             ocFileListFragmentInterface,
             user,
@@ -83,8 +74,7 @@ class GalleryAdapter(
             transferServiceGetter,
             showMetadata = false,
             showShareAvatar = false,
-            themeColorUtils,
-            themeDrawableUtils
+            viewThemeUtils
         )
     }
 
@@ -100,8 +90,12 @@ class GalleryAdapter(
                 )
             )
         } else {
-            GalleryItemViewHolder(
-                GridImageBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            GalleryRowHolder(
+                GalleryRowBinding.inflate(LayoutInflater.from(parent.context), parent, false),
+                defaultThumbnailSize.toFloat(),
+                ocFileListDelegate,
+                storageManager,
+                this
             )
         }
     }
@@ -113,26 +107,20 @@ class GalleryAdapter(
         absolutePosition: Int
     ) {
         if (holder != null) {
-            val itemViewHolder = holder as GalleryItemViewHolder
-            val ocFile = files[section].files[relativePosition]
-
-            ocFileListDelegate.bindGridViewHolder(
-                itemViewHolder,
-                ocFile,
-                SearchType.GALLERY_SEARCH
-            )
+            val rowHolder = holder as GalleryRowHolder
+            rowHolder.bind(files[section].rows[relativePosition])
         }
     }
 
     override fun getItemCount(section: Int): Int {
-        return files[section].files.size
+        return files[section].rows.size
     }
 
     override fun getSectionCount(): Int {
         return files.size
     }
 
-    override fun getPopupText(position: Int): String {
+    override fun getPopupText(p0: View, position: Int): CharSequence {
         return DisplayUtils.getDateByPattern(
             files[getRelativePosition(position).section()].date,
             context,
@@ -152,7 +140,8 @@ class GalleryAdapter(
             )
             headerViewHolder.binding.year.text = DisplayUtils.getDateByPattern(
                 galleryItem.date,
-                context, DisplayUtils.YEAR_PATTERN
+                context,
+                DisplayUtils.YEAR_PATTERN
             )
         }
     }
@@ -167,7 +156,6 @@ class GalleryAdapter(
         mediaState: GalleryFragmentBottomSheetDialog.MediaState,
         photoFragment: GalleryFragment
     ) {
-
         val items = storageManager.allGalleryItems
 
         val filteredList = items.filter { it != null && it.remotePath.startsWith(remotePath) }
@@ -186,7 +174,6 @@ class GalleryAdapter(
         mediaState: GalleryFragmentBottomSheetDialog.MediaState,
         photoFragment: GalleryFragment
     ) {
-
         val finalSortedList: List<OCFile> = when (mediaState) {
             GalleryFragmentBottomSheetDialog.MediaState.MEDIA_STATE_PHOTOS_ONLY -> {
                 items.filter { MimeTypeUtil.isImage(it.mimeType) }.distinct()
@@ -203,10 +190,18 @@ class GalleryAdapter(
 
         files = finalSortedList
             .groupBy { firstOfMonth(it.modificationTimestamp) }
-            .map { GalleryItems(it.key, FileStorageUtils.sortOcFolderDescDateModifiedWithoutFavoritesFirst(it.value)) }
+            .map { GalleryItems(it.key, transformToRows(it.value)) }
             .sortedBy { it.date }.reversed()
 
         Handler(Looper.getMainLooper()).post { notifyDataSetChanged() }
+    }
+
+    private fun transformToRows(list: List<OCFile>): List<GalleryRow> {
+        return list
+            .sortedBy { it.modificationTimestamp }
+            .reversed()
+            .chunked(columns)
+            .map { entry -> GalleryRow(entry, defaultThumbnailSize, defaultThumbnailSize) }
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -231,10 +226,14 @@ class GalleryAdapter(
     }
 
     fun getItem(position: Int): OCFile? {
-        val itemCoord = getRelativePosition(position)
+        val itemCoordinates = getRelativePosition(position)
+
         return files
-            .getOrNull(itemCoord.section())?.files
-            ?.getOrNull(itemCoord.relativePos())
+            .getOrNull(itemCoordinates.section())
+            ?.rows
+            ?.getOrNull(itemCoordinates.relativePos())
+            ?.files
+            ?.getOrNull(0)
     }
 
     override fun isMultiSelect(): Boolean {
@@ -246,8 +245,16 @@ class GalleryAdapter(
     }
 
     override fun getItemPosition(file: OCFile): Int {
-        val item = files.find { it.files.contains(file) }
-        return getAbsolutePosition(files.indexOf(item), item?.files?.indexOf(file) ?: 0)
+        val findResult = files
+            .asSequence()
+            .flatMapIndexed { itemIndex, item ->
+                item.rows.withIndex().map { row -> Triple(itemIndex, row.index, row.value) }
+            }.find {
+                it.third.files.contains(file)
+            }
+
+        val (item, row) = findResult ?: Triple(0, 0, null)
+        return getAbsolutePosition(item, row)
     }
 
     override fun swapDirectory(
@@ -289,7 +296,7 @@ class GalleryAdapter(
     }
 
     override fun getFilesCount(): Int {
-        return files.fold(0) { acc, item -> acc + item.files.size }
+        return files.fold(0) { acc, item -> acc + item.rows.size }
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -305,5 +312,9 @@ class GalleryAdapter(
     @VisibleForTesting
     fun addFiles(items: List<GalleryItems>) {
         files = items
+    }
+
+    fun changeColumn(newColumn: Int) {
+        columns = newColumn
     }
 }

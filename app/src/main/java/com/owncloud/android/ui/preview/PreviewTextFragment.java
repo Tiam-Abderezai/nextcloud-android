@@ -1,30 +1,18 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   Copyright (C) 2016 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2019-2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019-2022 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 Jorge Antonio Diaz-Benito Soriano <jorge.diazbenitosoriano@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.ui.preview;
 
 import android.app.Activity;
-import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.Color;
-import android.graphics.PorterDuff;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.Html;
@@ -48,7 +36,7 @@ import com.owncloud.android.ui.fragment.FileFragment;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.StringUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import javax.inject.Inject;
 
@@ -88,7 +76,7 @@ public abstract class PreviewTextFragment extends FileFragment implements Search
 
     @Inject UserAccountManager accountManager;
     @Inject DeviceInfo deviceInfo;
-    @Inject ThemeColorUtils themeColorUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
 
     protected TextFilePreviewBinding binding;
 
@@ -174,32 +162,29 @@ public abstract class PreviewTextFragment extends FileFragment implements Search
                                                             resources.getColor(R.color.primary));
             binding.textPreview.setText(Html.fromHtml(coloredText.replace("\n", "<br \\>")));
         } else {
-            setText(binding.textPreview, originalText, getFile(), activity, false, false, themeColorUtils);
+            setText(binding.textPreview, originalText, getFile(), activity, false, false, viewThemeUtils);
         }
     }
 
     protected static Spanned getRenderedMarkdownText(Activity activity,
                                                      String markdown,
-                                                     ThemeColorUtils themeColorUtils) {
+                                                     ViewThemeUtils viewThemeUtils) {
         Prism4j prism4j = new Prism4j(new MarkwonGrammarLocator());
         Prism4jTheme prism4jTheme = Prism4jThemeDefault.create();
         TaskListDrawable drawable = new TaskListDrawable(Color.GRAY, Color.GRAY, Color.WHITE);
-        drawable.setColorFilter(themeColorUtils.primaryColor(activity, true), PorterDuff.Mode.SRC_ATOP);
+        viewThemeUtils.platform.tintPrimaryDrawable(activity, drawable);
 
         final Markwon markwon = Markwon.builder(activity)
             .usePlugin(new AbstractMarkwonPlugin() {
                 @Override
                 public void configureTheme(@NonNull MarkwonTheme.Builder builder) {
-                    builder.linkColor(themeColorUtils.primaryColor(activity, true));
+                    builder.linkColor(viewThemeUtils.platform.primaryColor(activity));
                     builder.headingBreakHeight(0);
                 }
 
                 @Override
                 public void configureConfiguration(@NonNull MarkwonConfiguration.Builder builder) {
-                    builder.linkResolver((view, link) -> {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(link));
-                        DisplayUtils.startIntentIfAppAvailable(intent, activity, R.string.no_browser_available);
-                    });
+                    builder.linkResolver((view, link) -> DisplayUtils.startLinkIntent(activity, link));
                 }
             })
             .usePlugin(TablePlugin.create(activity))
@@ -225,7 +210,7 @@ public abstract class PreviewTextFragment extends FileFragment implements Search
                                Activity activity,
                                boolean ignoreMimetype,
                                boolean preview,
-                               ThemeColorUtils themeColorUtils) {
+                               ViewThemeUtils viewThemeUtils) {
         if (text == null) {
             return;
         }
@@ -236,7 +221,7 @@ public abstract class PreviewTextFragment extends FileFragment implements Search
                 // clickable links prevent to open full view of rich workspace
                 textView.setMovementMethod(LinkMovementMethod.getInstance());
             }
-            textView.setText(getRenderedMarkdownText(activity, text, themeColorUtils));
+            textView.setText(getRenderedMarkdownText(activity, text, viewThemeUtils));
         } else {
             textView.setText(text);
         }

@@ -1,23 +1,9 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2021 Tobias Kaminsky
- * Copyright (C) 2021 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2021 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.fragment.contactsbackup
 
@@ -26,7 +12,6 @@ import android.content.Context
 import android.content.res.Resources
 import android.database.Cursor
 import android.graphics.BitmapFactory
-import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.provider.ContactsContract
 import android.view.LayoutInflater
@@ -51,7 +36,7 @@ import com.owncloud.android.ui.TextDrawable
 import com.owncloud.android.ui.fragment.contactsbackup.BackupListFragment.getDisplayName
 import com.owncloud.android.utils.BitmapUtils
 import com.owncloud.android.utils.DisplayUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import ezvcard.VCard
 import ezvcard.property.Photo
 import third_parties.sufficientlysecure.AndroidCalendar
@@ -64,7 +49,7 @@ class BackupListAdapter(
     private val checkedCalendars: HashMap<String, Int> = HashMap(),
     val backupListFragment: BackupListFragment,
     val context: Context,
-    private val themeColorUtils: ThemeColorUtils
+    private val viewThemeUtils: ViewThemeUtils
 ) : SectionedRecyclerViewAdapter<SectionedViewHolder>() {
     private val calendarFiles = arrayListOf<OCFile>()
     private val contacts = arrayListOf<VCard>()
@@ -93,7 +78,9 @@ class BackupListAdapter(
             VIEW_TYPE_HEADER -> {
                 BackupListHeaderViewHolder(
                     BackupListItemHeaderBinding.inflate(
-                        LayoutInflater.from(parent.context), parent, false
+                        LayoutInflater.from(parent.context),
+                        parent,
+                        false
                     ),
                     context
                 )
@@ -101,14 +88,18 @@ class BackupListAdapter(
             VIEW_TYPE_CONTACTS -> {
                 ContactItemViewHolder(
                     ContactlistListItemBinding.inflate(
-                        LayoutInflater.from(parent.context), parent, false
+                        LayoutInflater.from(parent.context),
+                        parent,
+                        false
                     )
                 )
             }
             else -> {
                 CalendarItemViewHolder(
                     CalendarlistListItemBinding.inflate(
-                        LayoutInflater.from(parent.context), parent, false
+                        LayoutInflater.from(parent.context),
+                        parent,
+                        false
                     ),
                     context
                 )
@@ -154,7 +145,7 @@ class BackupListAdapter(
     override fun onBindHeaderViewHolder(holder: SectionedViewHolder?, section: Int, expanded: Boolean) {
         val headerViewHolder = holder as BackupListHeaderViewHolder
 
-        headerViewHolder.binding.name.setTextColor(themeColorUtils.primaryColor(context))
+        viewThemeUtils.platform.colorPrimaryTextViewElement(headerViewHolder.binding.name)
 
         if (section == SECTION_CALENDAR) {
             headerViewHolder.binding.name.text = context.resources.getString(R.string.calendars)
@@ -201,6 +192,7 @@ class BackupListAdapter(
         setChecked(checkedVCards.contains(position), holder.binding.name)
 
         holder.binding.name.text = getDisplayName(vCard)
+        viewThemeUtils.platform.themeCheckedTextView(holder.binding.name)
 
         // photo
         if (vCard.photos.size > 0) {
@@ -223,24 +215,13 @@ class BackupListAdapter(
 
     private fun setChecked(checked: Boolean, checkedTextView: CheckedTextView) {
         checkedTextView.isChecked = checked
-        if (checked) {
-            checkedTextView.checkMarkDrawable
-                .setColorFilter(themeColorUtils.primaryColor(context), PorterDuff.Mode.SRC_ATOP)
-        } else {
-            checkedTextView.checkMarkDrawable.clearColorFilter()
-        }
     }
 
     private fun toggleVCard(holder: ContactItemViewHolder, position: Int) {
         holder.binding.name.isChecked = !holder.binding.name.isChecked
         if (holder.binding.name.isChecked) {
-            holder.binding.name.checkMarkDrawable.setColorFilter(
-                themeColorUtils.primaryColor(context),
-                PorterDuff.Mode.SRC_ATOP
-            )
             checkedVCards.add(position)
         } else {
-            holder.binding.name.checkMarkDrawable.clearColorFilter()
             checkedVCards.remove(position)
         }
 
@@ -276,9 +257,7 @@ class BackupListAdapter(
                 context,
                 url,
                 target,
-                R.drawable.ic_user,
-                imageView.width,
-                imageView.height
+                R.drawable.ic_user
             )
         }
     }
@@ -291,6 +270,7 @@ class BackupListAdapter(
         val calendarName = name.substring(0, name.indexOf("_"))
         val date = name.substring(name.lastIndexOf("_") + 1).replace(".ics", "").replace("-", ":")
         holder.binding.name.text = context.resources.getString(R.string.calendar_name_linewrap, calendarName, date)
+        viewThemeUtils.platform.themeCheckedTextView(holder.binding.name)
         holder.setCalendars(ArrayList(AndroidCalendar.loadAll(context.contentResolver)))
         holder.binding.spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, calendarPosition: Int, id: Long) {
@@ -309,14 +289,9 @@ class BackupListAdapter(
         val checkedTextView = holder.binding.name
         checkedTextView.isChecked = !checkedTextView.isChecked
         if (checkedTextView.isChecked) {
-            checkedTextView.checkMarkDrawable.setColorFilter(
-                themeColorUtils.primaryColor(context),
-                PorterDuff.Mode.SRC_ATOP
-            )
             holder.showCalendars(true)
             checkedCalendars[calendarFiles[position].storagePath] = 0
         } else {
-            checkedTextView.checkMarkDrawable.clearColorFilter()
             checkedCalendars.remove(calendarFiles[position].storagePath)
             holder.showCalendars(false)
         }

@@ -1,41 +1,35 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author David A. Velasco
- * @author Andy Scherzinger
- * Copyright (C) 2015 ownCloud Inc.
- * Copyright (C) 2018 Andy Scherzinger
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2019-2023 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2020 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2018 Mario Danic <mario@lovelyhq.com>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014-2016 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2012 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.files;
 
 import android.accounts.AccountManager;
 import android.content.Context;
 import android.view.Menu;
-import android.view.MenuItem;
 
 import com.nextcloud.android.files.FileLockingHelper;
 import com.nextcloud.client.account.User;
+import com.nextcloud.client.editimage.EditImageActivity;
+import com.nextcloud.client.jobs.download.FileDownloadHelper;
+import com.nextcloud.client.jobs.upload.FileUploadHelper;
+import com.nextcloud.utils.EditorUtils;
 import com.owncloud.android.R;
+import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
-import com.owncloud.android.files.services.FileDownloader.FileDownloaderBinder;
-import com.owncloud.android.files.services.FileUploader.FileUploaderBinder;
 import com.owncloud.android.lib.resources.status.OCCapability;
 import com.owncloud.android.services.OperationsService.OperationsServiceBinder;
 import com.owncloud.android.ui.activity.ComponentsGetter;
-import com.owncloud.android.utils.EditorUtils;
+import com.owncloud.android.ui.helpers.FileOperationsHelper;
 import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.NextcloudServer;
 
@@ -45,6 +39,11 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
+import javax.inject.Inject;
+
+import androidx.annotation.IdRes;
+import androidx.core.content.pm.ShortcutManagerCompat;
+
 /**
  * Filters out the file actions available in a given {@link Menu} for a given {@link OCFile}
  * according to the current state of the latest.
@@ -52,6 +51,7 @@ import java.util.List;
 public class FileMenuFilter {
 
     private static final int SINGLE_SELECT_ITEMS = 1;
+    private static final int EMPTY_FILE_LENGTH = 0;
     public static final String SEND_OFF = "off";
 
     private final int numberOfAllFiles;
@@ -61,24 +61,54 @@ public class FileMenuFilter {
     private final boolean overflowMenu;
     private final User user;
     private final String userId;
+    private final FileDataStorageManager storageManager;
+    private final EditorUtils editorUtils;
 
-    /**
-     * Constructor
-     *
-     * @param numberOfAllFiles  Number of all displayed files
-     * @param files             Collection of {@link OCFile} file targets of the action to filter in the {@link Menu}.
-     * @param componentsGetter  Accessor to app components, needed to access synchronization services
-     * @param context           Android {@link Context}, needed to access build setup resources.
-     * @param overflowMenu      true if the overflow menu items are being filtered
-     * @param user              currently active user
-     */
-    public FileMenuFilter(int numberOfAllFiles,
-                          Collection<OCFile> files,
-                          ComponentsGetter componentsGetter,
-                          Context context,
-                          boolean overflowMenu,
-                          User user
-    ) {
+
+    public static class Factory {
+        private final FileDataStorageManager storageManager;
+        private final Context context;
+        private final EditorUtils editorUtils;
+
+        @Inject
+        public Factory(final FileDataStorageManager storageManager, final Context context, final EditorUtils editorUtils) {
+            this.storageManager = storageManager;
+            this.context = context;
+            this.editorUtils = editorUtils;
+        }
+
+        /**
+         * @param numberOfAllFiles Number of all displayed files
+         * @param files            Collection of {@link OCFile} file targets of the action to filter in the {@link Menu}.
+         * @param componentsGetter Accessor to app components, needed to access synchronization services
+         * @param overflowMenu     true if the overflow menu items are being filtered
+         * @param user             currently active user
+         */
+        public FileMenuFilter newInstance(final int numberOfAllFiles, final Collection<OCFile> files, final ComponentsGetter componentsGetter, boolean overflowMenu, User user) {
+            return new FileMenuFilter(storageManager, editorUtils, numberOfAllFiles, files, componentsGetter, context, overflowMenu, user);
+        }
+
+        /**
+         * @param file             {@link OCFile} file target
+         * @param componentsGetter Accessor to app components, needed to access synchronization services
+         * @param overflowMenu     true if the overflow menu items are being filtered
+         * @param user             currently active user
+         */
+        public FileMenuFilter newInstance(final OCFile file, final ComponentsGetter componentsGetter, boolean overflowMenu, User user) {
+            return newInstance(1, Collections.singletonList(file), componentsGetter, overflowMenu, user);
+        }
+    }
+
+
+    private FileMenuFilter(FileDataStorageManager storageManager, EditorUtils editorUtils, int numberOfAllFiles,
+                           Collection<OCFile> files,
+                           ComponentsGetter componentsGetter,
+                           Context context,
+                           boolean overflowMenu,
+                           User user
+                          ) {
+        this.storageManager = storageManager;
+        this.editorUtils = editorUtils;
         this.numberOfAllFiles = numberOfAllFiles;
         this.files = files;
         this.componentsGetter = componentsGetter;
@@ -92,254 +122,148 @@ public class FileMenuFilter {
     }
 
     /**
-     * Constructor
-     *
-     * @param file              {@link OCFile} target of the action to filter in the {@link Menu}.
-     * @param componentsGetter  Accessor to app components, needed to access synchronization services
-     * @param context           Android {@link Context}, needed to access build setup resources.
-     * @param overflowMenu      true if the overflow menu items are being filtered
-     * @param user              currently active user
+     * List of actions to remove given the parameters supplied in the constructor
      */
-    public FileMenuFilter(OCFile file,
-                          ComponentsGetter componentsGetter,
-                          Context context,
-                          boolean overflowMenu,
-                          User user
-    ) {
-        this(1, Collections.singletonList(file), componentsGetter, context, overflowMenu, user);
-    }
-
-    /**
-     * Filters out the file actions available in the passed {@link Menu} taken into account the state of the {@link
-     * OCFile} held by the filter.
-     *
-     * @param menu                 Options or context menu to filter.
-     * @param inSingleFileFragment True if this is not listing, but single file fragment, like preview or details.
-     */
-    public void filter(Menu menu, boolean inSingleFileFragment) {
-        if (files == null || files.isEmpty()) {
-            hideAll(menu);
-        } else {
-            List<Integer> toShow = new ArrayList<>();
-            List<Integer> toHide = new ArrayList<>();
-
-            filter(toShow, toHide, inSingleFileFragment);
-
-            for (int i : toShow) {
-                final MenuItem item = menu.findItem(i);
-                if (item != null) {
-                    showMenuItem(item);
-                } else {
-                    // group
-                    menu.setGroupVisible(i, true);
-                }
-            }
-
-            for (int i : toHide) {
-                final MenuItem item = menu.findItem(i);
-                if (item != null) {
-                    hideMenuItem(item);
-                } else {
-                    // group
-                    menu.setGroupVisible(i, false);
-                }
-            }
+    @IdRes
+    public List<Integer> getToHide(final boolean inSingleFileFragment){
+        if(files != null && ! files.isEmpty()){
+            return filter(inSingleFileFragment);
         }
+        return null;
     }
 
-    public static void hideAll(Menu menu) {
-        if (menu != null) {
-            for (int i = 0; i < menu.size(); i++) {
-                hideMenuItem(menu.getItem(i));
-            }
-        }
-    }
-
-    /**
-     * hides a given {@link MenuItem}.
-     *
-     * @param item the {@link MenuItem} to be hidden
-     */
-    public static void hideMenuItem(MenuItem item) {
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-    }
-
-    private static void showMenuItem(MenuItem item) {
-        if (item != null) {
-            item.setVisible(true);
-            item.setEnabled(true);
-        }
-    }
-
-    public static void hideMenuItems(MenuItem... items) {
-        if (items != null) {
-            for (MenuItem item : items) {
-                hideMenuItem(item);
-            }
-        }
-    }
 
     /**
      * Decides what actions must be shown and hidden implementing the different rule sets.
-     *  @param toShow                List to save the options that must be shown in the menu.
-     * @param toHide                List to save the options that must be shown in the menu.
-     * @param inSingleFileFragment  True if this is not listing, but single file fragment, like preview or details.
+     *
+     * @param inSingleFileFragment True if this is not listing, but single file fragment, like preview or details.
      */
-    private void filter(List<Integer> toShow,
-                        List<Integer> toHide,
-                        boolean inSingleFileFragment) {
+    private List<Integer> filter(boolean inSingleFileFragment) {
         boolean synchronizing = anyFileSynchronizing();
-        OCCapability capability = componentsGetter.getStorageManager().getCapability(user.getAccountName());
+        OCCapability capability = storageManager.getCapability(user.getAccountName());
         boolean endToEndEncryptionEnabled = capability.getEndToEndEncryption().isTrue();
         boolean fileLockingEnabled = capability.getFilesLockingVersion() != null;
 
-        filterEdit(toShow, toHide, capability);
-        filterDownload(toShow, toHide, synchronizing);
-        filterExport(toShow, toHide);
-        filterRename(toShow, toHide, synchronizing);
-        filterCopy(toShow, toHide, synchronizing);
-        filterMove(toShow, toHide, synchronizing);
-        filterRemove(toShow, toHide, synchronizing);
-        filterSelectAll(toShow, toHide, inSingleFileFragment);
-        filterDeselectAll(toShow, toHide, inSingleFileFragment);
-        filterOpenWith(toShow, toHide, synchronizing);
-        filterCancelSync(toShow, toHide, synchronizing);
-        filterSync(toShow, toHide, synchronizing);
-        filterShareFile(toShow, toHide, capability);
-        filterSendFiles(toShow, toHide, inSingleFileFragment);
-        filterDetails(toShow, toHide);
-        filterFavorite(toShow, toHide, synchronizing);
-        filterUnfavorite(toShow, toHide, synchronizing);
-        filterEncrypt(toShow, toHide, endToEndEncryptionEnabled);
-        filterUnsetEncrypted(toShow, toHide, endToEndEncryptionEnabled);
-        filterSetPictureAs(toShow, toHide);
-        filterStream(toShow, toHide);
-        filterLock(toShow, toHide, fileLockingEnabled);
-        filterUnlock(toShow, toHide, fileLockingEnabled);
-        filterLockInfo(toShow, toHide, fileLockingEnabled);
+        @IdRes final List<Integer> toHide = new ArrayList<>();
+
+        filterEdit(toHide, capability);
+        filterDownload(toHide, synchronizing);
+        filterExport(toHide);
+        filterRename(toHide, synchronizing);
+        filterMoveOrCopy(toHide, synchronizing);
+        filterRemove(toHide, synchronizing);
+        filterSelectAll(toHide, inSingleFileFragment);
+        filterDeselectAll(toHide, inSingleFileFragment);
+        filterOpenWith(toHide, synchronizing);
+        filterCancelSync(toHide, synchronizing);
+        filterSync(toHide, synchronizing);
+        filterShareFile(toHide, capability);
+        filterSendFiles(toHide, inSingleFileFragment);
+        filterDetails(toHide);
+        filterFavorite(toHide, synchronizing);
+        filterUnfavorite(toHide, synchronizing);
+        filterEncrypt(toHide, endToEndEncryptionEnabled);
+        filterUnsetEncrypted(toHide, endToEndEncryptionEnabled);
+        filterSetPictureAs(toHide);
+        filterStream(toHide);
+        filterLock(toHide, fileLockingEnabled);
+        filterUnlock(toHide, fileLockingEnabled);
+        filterPinToHome(toHide);
+
+        return toHide;
     }
 
-    private void filterShareFile(List<Integer> toShow, List<Integer> toHide, OCCapability capability) {
-        if (containsEncryptedFile() || (!isShareViaLinkAllowed() && !isShareWithUsersAllowed()) ||
-            !isSingleSelection() || !isShareApiEnabled(capability) || !files.iterator().next().canReshare()
-            || overflowMenu) {
+
+    private void filterShareFile(List<Integer> toHide, OCCapability capability) {
+        if (!isSingleSelection() || containsEncryptedFile() || hasEncryptedParent() ||
+            (!isShareViaLinkAllowed() && !isShareWithUsersAllowed()) ||
+            !isShareApiEnabled(capability) || !files.iterator().next().canReshare()) {
             toHide.add(R.id.action_send_share_file);
-        } else {
-            toShow.add(R.id.action_send_share_file);
         }
     }
 
-    private void filterSendFiles(List<Integer> toShow, List<Integer> toHide, boolean inSingleFileFragment) {
-        boolean show = true;
-        if (containsEncryptedFile() || overflowMenu || SEND_OFF.equalsIgnoreCase(context.getString(R.string.send_files_to_other_apps))) {
-            show = false;
-        }
-        if (!inSingleFileFragment && (isSingleSelection() || !anyFileDown())) {
-            show = false;
-        }
-        if (show) {
-            toShow.add(R.id.action_send_file);
-        } else {
+    private void filterSendFiles(List<Integer> toHide, boolean inSingleFileFragment) {
+        if ((overflowMenu || SEND_OFF.equalsIgnoreCase(context.getString(R.string.send_files_to_other_apps)) || containsEncryptedFile()) ||
+            (!inSingleFileFragment && (isSingleSelection() || !allFileDown())) ||
+            !toHide.contains(R.id.action_send_share_file)) {
             toHide.add(R.id.action_send_file);
         }
     }
 
-    private void filterDetails(Collection<Integer> toShow, Collection<Integer> toHide) {
-        if (isSingleSelection()) {
-            toShow.add(R.id.action_see_details);
-        } else {
+    private void filterDetails(Collection<Integer> toHide) {
+        if (!isSingleSelection()) {
             toHide.add(R.id.action_see_details);
         }
     }
 
-    private void filterFavorite(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
+    private void filterFavorite(List<Integer> toHide, boolean synchronizing) {
         if (files.isEmpty() || synchronizing || allFavorites()) {
             toHide.add(R.id.action_favorite);
-        } else {
-            toShow.add(R.id.action_favorite);
         }
     }
 
-    private void filterUnfavorite(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
+    private void filterUnfavorite(List<Integer> toHide, boolean synchronizing) {
         if (files.isEmpty() || synchronizing || allNotFavorites()) {
             toHide.add(R.id.action_unset_favorite);
-        } else {
-            toShow.add(R.id.action_unset_favorite);
         }
     }
 
-    private void filterLock(List<Integer> toShow, List<Integer> toHide, boolean fileLockingEnabled) {
-        if (files.isEmpty() || !isSingleSelection() || !fileLockingEnabled) {
+    private void filterLock(List<Integer> toHide, boolean fileLockingEnabled) {
+        if (files.isEmpty() ||
+            !isSingleSelection() ||
+            !fileLockingEnabled ||
+            containsEncryptedFile() ||
+            containsEncryptedFolder()) {
             toHide.add(R.id.action_lock_file);
         } else {
             OCFile file = files.iterator().next();
             if (file.isLocked() || file.isFolder()) {
                 toHide.add(R.id.action_lock_file);
-            } else {
-                toShow.add(R.id.action_lock_file);
             }
         }
     }
 
-    private void filterUnlock(List<Integer> toShow, List<Integer> toHide, boolean fileLockingEnabled) {
+    private void filterUnlock(List<Integer> toHide, boolean fileLockingEnabled) {
         if (files.isEmpty() || !isSingleSelection() || !fileLockingEnabled) {
             toHide.add(R.id.action_unlock_file);
         } else {
             OCFile file = files.iterator().next();
-            if (FileLockingHelper.canUserUnlockFile(userId, file)) {
-                toShow.add(R.id.action_unlock_file);
-            } else {
+            if (!FileLockingHelper.canUserUnlockFile(userId, file)) {
                 toHide.add(R.id.action_unlock_file);
             }
         }
     }
 
-    private void filterLockInfo(List<Integer> toShow, List<Integer> toHide, boolean fileLockingEnabled) {
-        if (files.isEmpty() || !isSingleSelection() || !fileLockingEnabled) {
-            toHide.add(R.id.menu_group_lock_info);
-        } else {
-            OCFile file = files.iterator().next();
-            if (file.isLocked()) {
-                toShow.add(R.id.menu_group_lock_info);
-            } else {
-                toHide.add(R.id.menu_group_lock_info);
-            }
-        }
-    }
-
-    private void filterEncrypt(List<Integer> toShow, List<Integer> toHide, boolean endToEndEncryptionEnabled) {
+    private void filterEncrypt(List<Integer> toHide, boolean endToEndEncryptionEnabled) {
         if (files.isEmpty() || !isSingleSelection() || isSingleFile() || isEncryptedFolder() || isGroupFolder()
-            || !endToEndEncryptionEnabled) {
+            || !endToEndEncryptionEnabled || !isEmptyFolder() || isShared()) {
             toHide.add(R.id.action_encrypted);
-        } else {
-            toShow.add(R.id.action_encrypted);
         }
     }
 
-    private void filterUnsetEncrypted(List<Integer> toShow, List<Integer> toHide, boolean endToEndEncryptionEnabled) {
-        if (files.isEmpty() || !isSingleSelection() || isSingleFile() || !isEncryptedFolder() || hasEncryptedParent()
-            || !endToEndEncryptionEnabled) {
+    private void filterUnsetEncrypted(List<Integer> toHide, boolean endToEndEncryptionEnabled) {
+        if (!endToEndEncryptionEnabled || files.isEmpty() || !isSingleSelection() || isSingleFile() || !isEncryptedFolder() || hasEncryptedParent()
+            || !isEmptyFolder() || !FileOperationsHelper.isEndToEndEncryptionSetup(context, user)) {
             toHide.add(R.id.action_unset_encrypted);
-        } else {
-            toShow.add(R.id.action_unset_encrypted);
         }
     }
 
-    private void filterSetPictureAs(List<Integer> toShow, List<Integer> toHide) {
-        if (isSingleImage() && !MimeTypeUtil.isSVG(files.iterator().next())) {
-            toShow.add(R.id.action_set_as_wallpaper);
-        } else {
+    private void filterSetPictureAs(List<Integer> toHide) {
+        if (!isSingleImage() || MimeTypeUtil.isSVG(files.iterator().next())) {
             toHide.add(R.id.action_set_as_wallpaper);
         }
     }
 
-    private void filterEdit(List<Integer> toShow,
-                            List<Integer> toHide,
-                            OCCapability capability
-    ) {
+    private void filterPinToHome(List<Integer> toHide) {
+        if (!isSingleSelection() || !ShortcutManagerCompat.isRequestPinShortcutSupported(context)) {
+            toHide.add(R.id.action_pin_to_homescreen);
+        }
+    }
+
+    private void filterEdit(
+        List<Integer> toHide,
+        OCCapability capability
+                           ) {
         if (files.iterator().next().isEncrypted()) {
             toHide.add(R.id.action_edit);
             return;
@@ -347,12 +271,8 @@ public class FileMenuFilter {
 
         String mimeType = files.iterator().next().getMimeType();
 
-        if (isRichDocumentEditingSupported(capability, mimeType) ||
-            EditorUtils.isEditorAvailable(context.getContentResolver(),
-                                          user,
-                                          mimeType)) {
-            toShow.add(R.id.action_edit);
-        } else {
+        if (!isRichDocumentEditingSupported(capability, mimeType) && !editorUtils.isEditorAvailable(user, mimeType) &&
+            !(isSingleImage() && EditImageActivity.Companion.canBePreviewed(files.iterator().next()))) {
             toHide.add(R.id.action_edit);
         }
     }
@@ -368,31 +288,26 @@ public class FileMenuFilter {
             capability.getRichDocumentsDirectEditing().isTrue();
     }
 
-    private void filterSync(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
-        if (files.isEmpty() || (!anyFileDown() && !containsFolder()) || synchronizing) {
+    private void filterSync(List<Integer> toHide, boolean synchronizing) {
+        if (files.isEmpty() || (!anyFileDown() && !containsFolder()) || synchronizing || containsEncryptedFile()
+            || containsEncryptedFolder()) {
             toHide.add(R.id.action_sync_file);
-        } else {
-            toShow.add(R.id.action_sync_file);
         }
     }
 
-    private void filterCancelSync(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
+    private void filterCancelSync(List<Integer> toHide, boolean synchronizing) {
         if (files.isEmpty() || !synchronizing) {
             toHide.add(R.id.action_cancel_sync);
-        } else {
-            toShow.add(R.id.action_cancel_sync);
         }
     }
 
-    private void filterOpenWith(Collection<Integer> toShow, Collection<Integer> toHide, boolean synchronizing) {
+    private void filterOpenWith(Collection<Integer> toHide, boolean synchronizing) {
         if (!isSingleFile() || !anyFileDown() || synchronizing) {
             toHide.add(R.id.action_open_file_with);
-        } else {
-            toShow.add(R.id.action_open_file_with);
         }
     }
 
-    private void filterDeselectAll(List<Integer> toShow, List<Integer> toHide, boolean inSingleFileFragment) {
+    private void filterDeselectAll(List<Integer> toHide, boolean inSingleFileFragment) {
         if (inSingleFileFragment) {
             // Always hide in single file fragments
             toHide.add(R.id.action_deselect_all_action_menu);
@@ -400,19 +315,15 @@ public class FileMenuFilter {
             // Show only if at least one item is selected.
             if (files.isEmpty() || overflowMenu) {
                 toHide.add(R.id.action_deselect_all_action_menu);
-            } else {
-                toShow.add(R.id.action_deselect_all_action_menu);
             }
         }
     }
 
-    private void filterSelectAll(List<Integer> toShow, List<Integer> toHide, boolean inSingleFileFragment) {
+    private void filterSelectAll(List<Integer> toHide, boolean inSingleFileFragment) {
         if (!inSingleFileFragment) {
             // Show only if at least one item isn't selected.
             if (files.size() >= numberOfAllFiles || overflowMenu) {
                 toHide.add(R.id.action_select_all_action_menu);
-            } else {
-                toShow.add(R.id.action_select_all_action_menu);
             }
         } else {
             // Always hide in single file fragments
@@ -420,60 +331,40 @@ public class FileMenuFilter {
         }
     }
 
-    private void filterRemove(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
-        if (files.isEmpty() || synchronizing || containsLockedFile()) {
+    private void filterRemove(List<Integer> toHide, boolean synchronizing) {
+        if (files.isEmpty() || synchronizing || containsLockedFile()
+            || containsEncryptedFolder() || isFolderAndContainsEncryptedFile()) {
             toHide.add(R.id.action_remove_file);
-        } else {
-            toShow.add(R.id.action_remove_file);
         }
     }
 
-    private void filterMove(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
+    private void filterMoveOrCopy(List<Integer> toHide, boolean synchronizing) {
         if (files.isEmpty() || synchronizing || containsEncryptedFile() || containsEncryptedFolder() || containsLockedFile()) {
-            toHide.add(R.id.action_move);
-        } else {
-            toShow.add(R.id.action_move);
+            toHide.add(R.id.action_move_or_copy);
         }
     }
 
-    private void filterCopy(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
-        if (files.isEmpty() || synchronizing || containsEncryptedFile() || containsEncryptedFolder()) {
-            toHide.add(R.id.action_copy);
-        } else {
-            toShow.add(R.id.action_copy);
-        }
-    }
-
-
-    private void filterRename(Collection<Integer> toShow, Collection<Integer> toHide, boolean synchronizing) {
+    private void filterRename(Collection<Integer> toHide, boolean synchronizing) {
         if (!isSingleSelection() || synchronizing || containsEncryptedFile() || containsEncryptedFolder() || containsLockedFile()) {
             toHide.add(R.id.action_rename_file);
-        } else {
-            toShow.add(R.id.action_rename_file);
         }
     }
 
-    private void filterDownload(List<Integer> toShow, List<Integer> toHide, boolean synchronizing) {
+    private void filterDownload(List<Integer> toHide, boolean synchronizing) {
         if (files.isEmpty() || containsFolder() || anyFileDown() || synchronizing) {
             toHide.add(R.id.action_download_file);
-        } else {
-            toShow.add(R.id.action_download_file);
         }
     }
 
-    private void filterExport(List<Integer> toShow, List<Integer> toHide) {
+    private void filterExport(List<Integer> toHide) {
         if (files.isEmpty() || containsFolder()) {
             toHide.add(R.id.action_export_file);
-        } else {
-            toShow.add(R.id.action_export_file);
         }
     }
 
-    private void filterStream(List<Integer> toShow, List<Integer> toHide) {
-        if (files.isEmpty() || !isSingleFile() || !isSingleMedia()) {
+    private void filterStream(List<Integer> toHide) {
+        if (files.isEmpty() || !isSingleFile() || !isSingleMedia() || containsEncryptedFile()) {
             toHide.add(R.id.action_stream_media);
-        } else {
-            toShow.add(R.id.action_stream_media);
         }
     }
 
@@ -481,11 +372,9 @@ public class FileMenuFilter {
         boolean synchronizing = false;
         if (componentsGetter != null && !files.isEmpty() && user != null) {
             OperationsServiceBinder opsBinder = componentsGetter.getOperationsServiceBinder();
-            FileUploaderBinder uploaderBinder = componentsGetter.getFileUploaderBinder();
-            FileDownloaderBinder downloaderBinder = componentsGetter.getFileDownloaderBinder();
             synchronizing = anyFileSynchronizing(opsBinder) ||      // comparing local and remote
-                            anyFileDownloading(downloaderBinder) ||
-                            anyFileUploading(uploaderBinder);
+                anyFileDownloading() ||
+                anyFileUploading();
         }
         return synchronizing;
     }
@@ -500,31 +389,30 @@ public class FileMenuFilter {
         return synchronizing;
     }
 
-    private boolean anyFileDownloading(FileDownloaderBinder downloaderBinder) {
-        boolean downloading = false;
-        if (downloaderBinder != null) {
-            for (Iterator<OCFile> iterator = files.iterator(); !downloading && iterator.hasNext(); ) {
-                downloading = downloaderBinder.isDownloading(user, iterator.next());
+    private boolean anyFileDownloading() {
+        for (OCFile file : files) {
+            if (FileDownloadHelper.Companion.instance().isDownloading(user, file)) {
+                return true;
             }
         }
-        return downloading;
+
+        return false;
     }
 
-    private boolean anyFileUploading(FileUploaderBinder uploaderBinder) {
-        boolean uploading = false;
-        if (uploaderBinder != null) {
-            for (Iterator<OCFile> iterator = files.iterator(); !uploading && iterator.hasNext(); ) {
-                uploading = uploaderBinder.isUploading(user, iterator.next());
+    private boolean anyFileUploading() {
+        for (OCFile file : files) {
+            if (FileUploadHelper.Companion.instance().isUploading(user, file)) {
+                return true;
             }
         }
-        return uploading;
+        return false;
     }
 
     private boolean isShareApiEnabled(OCCapability capability) {
         return capability != null &&
-                (capability.getFilesSharingApiEnabled().isTrue() ||
-                        capability.getFilesSharingApiEnabled().isUnknown()
-                );
+            (capability.getFilesSharingApiEnabled().isTrue() ||
+                capability.getFilesSharingApiEnabled().isUnknown()
+            );
     }
 
     private boolean isShareWithUsersAllowed() {
@@ -555,13 +443,26 @@ public class FileMenuFilter {
         }
     }
 
+    private boolean isEmptyFolder() {
+        if (isSingleSelection()) {
+            OCFile file = files.iterator().next();
+
+            boolean noChildren = storageManager
+                .getFolderContent(file, false).size() == EMPTY_FILE_LENGTH;
+
+            return file.isFolder() && file.getFileLength() == EMPTY_FILE_LENGTH && noChildren;
+        } else {
+            return false;
+        }
+    }
+
     private boolean isGroupFolder() {
         return files.iterator().next().isGroupFolder();
     }
 
     private boolean hasEncryptedParent() {
         OCFile folder = files.iterator().next();
-        OCFile parent = componentsGetter.getStorageManager().getFileById(folder.getParentId());
+        OCFile parent = storageManager.getFileById(folder.getParentId());
 
         return parent != null && parent.isEncrypted();
     }
@@ -574,6 +475,24 @@ public class FileMenuFilter {
         OCFile file = files.iterator().next();
         return isSingleSelection() && (MimeTypeUtil.isVideo(file) || MimeTypeUtil.isAudio(file));
     }
+
+    private boolean isFolderAndContainsEncryptedFile() {
+        for (OCFile file : files) {
+            if (!file.isFolder()) {
+                continue;
+            }
+            if (file.isFolder()) {
+                List<OCFile> children = storageManager.getFolderContent(file, false);
+                for (OCFile child : children) {
+                    if (child.isEncrypted()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
 
     private boolean containsEncryptedFile() {
         for (OCFile file : files) {
@@ -620,6 +539,15 @@ public class FileMenuFilter {
         return false;
     }
 
+    private boolean allFileDown() {
+        for (OCFile file: files) {
+            if(!file.isDown()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private boolean allFavorites() {
         for (OCFile file : files) {
             if (!file.isFavorite()) {
@@ -636,5 +564,14 @@ public class FileMenuFilter {
             }
         }
         return true;
+    }
+
+    private boolean isShared() {
+        for (OCFile file : files) {
+            if (file.isSharedWithMe() || file.isSharedViaLink() || file.isSharedWithSharee()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

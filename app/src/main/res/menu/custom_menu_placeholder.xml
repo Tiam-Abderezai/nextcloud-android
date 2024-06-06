@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Nextcloud - Android Client
+  ~
+  ~ SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+  ~ SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+  ~ SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+-->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <!-- This is a "fake" menu so that we can implement custom actions on menu click, while still behaving and looking like a traditional menu item -->
+    <item
+        android:id="@+id/custom_menu_placeholder_item"
+        android:icon="@drawable/ic_dots_vertical"
+        android:title="@string/overflow_menu"
+        app:showAsAction="always" />
+</menu>

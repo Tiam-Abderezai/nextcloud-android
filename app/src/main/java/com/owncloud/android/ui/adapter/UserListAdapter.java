@@ -1,31 +1,18 @@
 /*
- *   Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author Andy Scherzinger
- *   @author Chris Narkiewicz <hello@ezaquarii.com>
- *   @author Nick Antoniou
- *
- *   Copyright (C) 2016 Andy Scherzinger
- *   Copyright (C) 2016 ownCloud Inc.
- *   Copyright (C) 2019 Nick Antoniou
- *   Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- *
- *   This program is free software; you can redistribute it and/or
- *   modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- *   License as published by the Free Software Foundation; either
- *   version 3 of the License, or any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- *   You should have received a copy of the GNU Affero General Public
- *   License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2020 Kilian Périsset <kilian.perisset@infomaniak.com>
+ * SPDX-FileCopyrightText: 2020 Stefan Niedermann <info@niedermann.it>
+ * SPDX-FileCopyrightText: 2018-2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2019 Nick Antoniou <nikolasea@windowslive.com>
+ * SPDX-FileCopyrightText: 2016 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter;
 
+import android.content.Context;
 import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
@@ -40,10 +27,8 @@ import com.owncloud.android.databinding.AccountActionBinding;
 import com.owncloud.android.databinding.AccountItemBinding;
 import com.owncloud.android.lib.common.OwnCloudAccount;
 import com.owncloud.android.lib.common.utils.Log_OC;
-import com.owncloud.android.ui.activity.BaseActivity;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,15 +36,12 @@ import java.util.List;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-/**
- * This Adapter populates a RecyclerView with all accounts within the app.
- */
 public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>
                                 implements DisplayUtils.AvatarGenerationListener {
     private static final String TAG = UserListAdapter.class.getSimpleName();
 
     private final float accountAvatarRadiusDimension;
-    private final BaseActivity context;
+    private final Context context;
     private List<UserListItem> values;
     private Listener accountListAdapterListener;
     private final UserAccountManager accountManager;
@@ -69,17 +51,17 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     private final ClickListener clickListener;
     private final boolean showAddAccount;
     private final boolean showDotsMenu;
-    private final ThemeColorUtils themeColorUtils;
-    private final ThemeDrawableUtils themeDrawableUtils;
+    private boolean highlightCurrentlyActiveAccount;
+    private final ViewThemeUtils viewThemeUtils;
 
-    public UserListAdapter(BaseActivity context,
+    public UserListAdapter(Context context,
                            UserAccountManager accountManager,
                            List<UserListItem> values,
                            ClickListener clickListener,
                            boolean showAddAccount,
                            boolean showDotsMenu,
-                           ThemeColorUtils themeColorUtils,
-                           ThemeDrawableUtils themeDrawableUtils) {
+                           boolean highlightCurrentlyActiveAccount,
+                           final ViewThemeUtils viewThemeUtils) {
         this.context = context;
         this.accountManager = accountManager;
         this.values = values;
@@ -90,8 +72,8 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         this.clickListener = clickListener;
         this.showAddAccount = showAddAccount;
         this.showDotsMenu = showDotsMenu;
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
+        this.highlightCurrentlyActiveAccount = highlightCurrentlyActiveAccount;
     }
 
     @Override
@@ -109,7 +91,7 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             return new AccountViewHolderItem(AccountItemBinding.inflate(LayoutInflater.from(context),
                                                                         parent,
                                                                         false),
-                                             themeDrawableUtils);
+                                             viewThemeUtils);
         } else {
             return new AddAccountViewHolderItem(
                 AccountActionBinding.inflate(LayoutInflater.from(context), parent, false));
@@ -125,7 +107,7 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             if (UserListItem.TYPE_ACCOUNT == userListItem.getType()) {
                 final User user = userListItem.getUser();
                 AccountViewHolderItem item = (AccountViewHolderItem) holder;
-                item.bind(user, userListItem.isEnabled(), this);
+                item.bind(user, userListItem.isEnabled(), highlightCurrentlyActiveAccount, this);
             } // create add account action item
             else if (UserListItem.TYPE_ACTION_ADD == userListItem.getType() && accountListAdapterListener != null) {
                 ((AddAccountViewHolderItem) holder).bind(accountListAdapterListener);
@@ -198,11 +180,11 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         private final AccountItemBinding binding;
         private User user;
 
-        AccountViewHolderItem(@NonNull AccountItemBinding binding, ThemeDrawableUtils themeDrawableUtils) {
+        AccountViewHolderItem(@NonNull AccountItemBinding binding, final ViewThemeUtils viewThemeUtils) {
             super(binding.getRoot());
             this.binding = binding;
 
-            themeDrawableUtils.tintDrawable(binding.ticker.getDrawable(), themeColorUtils.primaryColor(context, true));
+            viewThemeUtils.platform.tintPrimaryDrawable(context, binding.ticker.getDrawable());
 
             binding.getRoot().setOnClickListener(this);
             if (showDotsMenu) {
@@ -228,12 +210,19 @@ public class UserListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             }
         }
 
-        public void bind(User user, boolean userListItemEnabled, DisplayUtils.AvatarGenerationListener avatarGenerationListener) {
+        public void bind(User user,
+                         boolean userListItemEnabled,
+                         boolean highlightCurrentlyActiveAccount,
+                         DisplayUtils.AvatarGenerationListener avatarGenerationListener) {
             setData(user);
             setUser(user);
             setUsername(user);
             setAvatar(user, avatarGenerationListener);
-            setCurrentlyActiveState(user);
+            if (highlightCurrentlyActiveAccount) {
+                setCurrentlyActiveState(user);
+            } else {
+                binding.ticker.setVisibility(View.INVISIBLE);
+            }
 
             if (!userListItemEnabled) {
                 binding.userName.setPaintFlags(binding.userName.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);

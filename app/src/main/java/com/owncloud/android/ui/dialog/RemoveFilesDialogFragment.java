@@ -1,46 +1,35 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author David A. Velasco
- *   Copyright (C) 2015 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2018 Jessie Chatham Spencer <jessie@teainspace.com>
+ * SPDX-FileCopyrightText: 2016-2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2015 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.ui.dialog;
 
 import android.app.Dialog;
 import android.os.Bundle;
 import android.view.ActionMode;
 
+import com.google.android.material.button.MaterialButton;
 import com.nextcloud.client.di.Injectable;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.ui.activity.ComponentsGetter;
 import com.owncloud.android.ui.dialog.ConfirmationDialogFragment.ConfirmationDialogFragmentListener;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
-
-import javax.inject.Inject;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 
 /**
  * Dialog requiring confirmation before removing a collection of given OCFiles.
- * <p>
  * Triggers the removal according to the user response.
  */
 public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implements
@@ -48,8 +37,6 @@ public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implem
 
     private static final int SINGLE_SELECTION = 1;
     private static final String ARG_TARGET_FILES = "TARGET_FILES";
-
-    @Inject ThemeColorUtils themeColorUtils;
 
     private Collection<OCFile> mTargetFiles;
     private ActionMode actionMode;
@@ -101,15 +88,18 @@ public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implem
                 R.string.confirmation_remove_files_alert;
         }
 
-        int localRemoveButton = (containsFolder || containsDown) ? R.string.confirmation_remove_local : -1;
-
         args.putInt(ARG_MESSAGE_RESOURCE_ID, messageStringId);
         if (files.size() == SINGLE_SELECTION) {
-            args.putStringArray(ARG_MESSAGE_ARGUMENTS, new String[]{files.get(0).getFileName()});
+            args.putStringArray(ARG_MESSAGE_ARGUMENTS, new String[] { files.get(0).getFileName() } );
         }
+
         args.putInt(ARG_POSITIVE_BTN_RES, R.string.file_delete);
+
+        if (containsFolder || containsDown) {
+            args.putInt(ARG_NEGATIVE_BTN_RES, R.string.confirmation_remove_local);
+        }
+
         args.putInt(ARG_NEUTRAL_BTN_RES, R.string.file_keep);
-        args.putInt(ARG_NEGATIVE_BTN_RES, localRemoveButton);
         args.putParcelableArrayList(ARG_TARGET_FILES, files);
         frag.setArguments(args);
 
@@ -133,23 +123,34 @@ public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implem
     public void onStart() {
         super.onStart();
 
-        int color = themeColorUtils.primaryAccentColor(getActivity());
-
         AlertDialog alertDialog = (AlertDialog) getDialog();
 
-        alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(color);
-        alertDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(color);
-        alertDialog.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(color);
+        if (alertDialog != null) {
+            MaterialButton positiveButton = (MaterialButton) alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            viewThemeUtils.material.colorMaterialButtonPrimaryTonal(positiveButton);
+
+            MaterialButton negativeButton = (MaterialButton) alertDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(negativeButton);
+
+            MaterialButton neutralButton = (MaterialButton) alertDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+            if (neutralButton != null) {
+                viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(neutralButton);
+            }
+        }
     }
 
     @NonNull
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         Dialog dialog = super.onCreateDialog(savedInstanceState);
-        mTargetFiles = getArguments().getParcelableArrayList(ARG_TARGET_FILES);
+        Bundle arguments = getArguments();
 
+        if (arguments == null) {
+            return dialog;
+        }
+
+        mTargetFiles = arguments.getParcelableArrayList(ARG_TARGET_FILES);
         setOnConfirmationListener(this);
-
         return dialog;
     }
 
@@ -159,9 +160,7 @@ public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implem
      */
     @Override
     public void onConfirmation(String callerTag) {
-        ComponentsGetter cg = (ComponentsGetter) getActivity();
-        cg.getFileOperationsHelper().removeFiles(mTargetFiles, false, false);
-        finishActionMode();
+        removeFiles(false);
     }
 
     /**
@@ -169,8 +168,14 @@ public class RemoveFilesDialogFragment extends ConfirmationDialogFragment implem
      */
     @Override
     public void onCancel(String callerTag) {
+        removeFiles(true);
+    }
+
+    private void removeFiles(boolean onlyLocalCopy) {
         ComponentsGetter cg = (ComponentsGetter) getActivity();
-        cg.getFileOperationsHelper().removeFiles(mTargetFiles, true, false);
+        if (cg != null) {
+            cg.getFileOperationsHelper().removeFiles(mTargetFiles, onlyLocalCopy, false);
+        }
         finishActionMode();
     }
 

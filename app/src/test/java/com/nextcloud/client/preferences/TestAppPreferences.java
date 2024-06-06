@@ -1,9 +1,15 @@
+/*
+ * Nextcloud - Android Client
+ *
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+ */
 package com.nextcloud.client.preferences;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import com.nextcloud.client.account.CurrentAccountProvider;
+import com.nextcloud.client.account.UserAccountManager;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -128,7 +134,7 @@ public class TestAppPreferences {
         private SharedPreferences.Editor editor;
 
         @Mock
-        private CurrentAccountProvider accountProvider;
+        private UserAccountManager userAccountManager;
 
         private AppPreferencesImpl appPreferences;
 
@@ -137,7 +143,7 @@ public class TestAppPreferences {
             MockitoAnnotations.initMocks(this);
             when(editor.remove(anyString())).thenReturn(editor);
             when(sharedPreferences.edit()).thenReturn(editor);
-            appPreferences = new AppPreferencesImpl(testContext, sharedPreferences, accountProvider);
+            appPreferences = new AppPreferencesImpl(testContext, sharedPreferences, userAccountManager);
         }
 
         @Test

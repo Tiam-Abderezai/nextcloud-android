@@ -1,22 +1,11 @@
 /*
- *  Copyright (C) 2015  Jon Griffiths (jon_p_griffiths@yahoo.com)
- *  Copyright (C) 2013  Dominik Schürmann <dominik@dominikschuermann.de>
- *  Copyright (C) 2010-2011  Lukas Aichbauer
+ * Nextcloud - Android Client
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2015 Jon Griffiths (jon_p_griffiths@yahoo.com)
+ * SPDX-FileCopyrightText: 2013 Dominik Schürmann <dominik@dominikschuermann.de>
+ * SPDX-FileCopyrightText: 2010-2011 Lukas Aichbauer
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
-
 package third_parties.sufficientlysecure;
 
 import android.annotation.SuppressLint;
@@ -42,12 +31,11 @@ import android.view.WindowManager;
 import android.widget.EditText;
 
 import com.nextcloud.client.account.User;
-import com.nextcloud.client.di.Injectable;
-import com.nextcloud.client.files.downloader.PostUploadAction;
-import com.nextcloud.client.files.downloader.Request;
-import com.nextcloud.client.files.downloader.TransferManagerConnection;
-import com.nextcloud.client.files.downloader.UploadRequest;
-import com.nextcloud.client.files.downloader.UploadTrigger;
+import com.nextcloud.client.files.Request;
+import com.nextcloud.client.files.UploadRequest;
+import com.nextcloud.client.jobs.transfer.TransferManagerConnection;
+import com.nextcloud.client.jobs.upload.PostUploadAction;
+import com.nextcloud.client.jobs.upload.UploadTrigger;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.OCFile;
@@ -62,6 +50,7 @@ import net.fortuna.ical4j.model.Dur;
 import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactoryImpl;
+import net.fortuna.ical4j.model.PropertyFactoryRegistry;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
@@ -101,10 +90,10 @@ import java.util.Set;
 import java.util.UUID;
 
 @SuppressLint("NewApi")
-public class SaveCalendar implements Injectable {
+public class SaveCalendar {
     private static final String TAG = "ICS_SaveCalendar";
 
-    private final PropertyFactoryImpl mPropertyFactory = PropertyFactoryImpl.getInstance();
+    private final PropertyFactoryImpl mPropertyFactory = new PropertyFactoryRegistry();
     private TimeZoneRegistry mTzRegistry;
     private final Set<TimeZone> mInsertedTimeZones = new HashSet<>();
     private final Set<String> mFailedOrganisers = new HashSet<>();
@@ -190,17 +179,21 @@ public class SaveCalendar implements Injectable {
             cal.getComponents().add(v);
         }
 
-        new CalendarOutputter().output(cal, new FileOutputStream(fileName));
+        if (!cal.getComponents().isEmpty()) {
+            new CalendarOutputter().output(cal, new FileOutputStream(fileName));
 
-        Resources res = activity.getResources();
-        String msg = res.getQuantityString(R.plurals.wrote_n_events_to, events.size(), events.size(), file);
-        if (numberOfCreatedUids > 0) {
-            msg += "\n" + res.getQuantityString(R.plurals.created_n_uids_to, numberOfCreatedUids, numberOfCreatedUids);
+            Resources res = activity.getResources();
+            String msg = res.getQuantityString(R.plurals.wrote_n_events_to, events.size(), events.size(), file);
+            if (numberOfCreatedUids > 0) {
+                msg += "\n" + res.getQuantityString(R.plurals.created_n_uids_to, numberOfCreatedUids, numberOfCreatedUids);
+            }
+
+            // TODO replace DisplayUtils.showSnackMessage(activity, msg);
+
+            upload(fileName);
+        } else {
+            Log_OC.w(TAG, "Calendar '" + selectedCal.mIdStr + "' has no components");
         }
-
-        // TODO replace DisplayUtils.showSnackMessage(activity, msg);
-
-        upload(fileName);
     }
 
     private int ensureUids(Context activity, ContentResolver resolver, AndroidCalendar cal) {

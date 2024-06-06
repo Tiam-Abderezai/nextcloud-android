@@ -1,20 +1,11 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author David A. Velasco
- * Copyright (C) 2015 ownCloud Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020-2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 23017-2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.utils;
 
@@ -27,8 +18,10 @@ import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.widget.ImageView;
@@ -47,6 +40,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.drawable.RoundedBitmapDrawable;
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
@@ -202,6 +196,13 @@ public final class BitmapUtils {
         return resultBitmap;
     }
 
+    public static int[] getImageResolution(String srcPath) {
+        Options options = new Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(srcPath, options);
+        return new int [] {options.outWidth, options.outHeight};
+    }
+
     public static Color usernameToColor(String name) {
         String hash = name.toLowerCase(Locale.ROOT);
 
@@ -343,6 +344,7 @@ public final class BitmapUtils {
      * @param bitmap    the original bitmap
      * @return the circular bitmap
      */
+    @Nullable
     public static RoundedBitmapDrawable bitmapToCircularBitmapDrawable(Resources resources,
                                                                        Bitmap bitmap,
                                                                        float radius) {
@@ -360,6 +362,7 @@ public final class BitmapUtils {
         return roundedBitmap;
     }
 
+    @Nullable
     public static RoundedBitmapDrawable bitmapToCircularBitmapDrawable(Resources resources, Bitmap bitmap) {
         return bitmapToCircularBitmapDrawable(resources, bitmap, -1);
     }
@@ -375,6 +378,7 @@ public final class BitmapUtils {
         return drawableToBitmap(drawable, -1, -1);
     }
 
+    @NonNull
     public static Bitmap drawableToBitmap(Drawable drawable, int desiredWidth, int desiredHeight) {
         if (drawable instanceof BitmapDrawable) {
             BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
@@ -429,7 +433,7 @@ public final class BitmapUtils {
                                      imageView);
     }
 
-    public static Bitmap createAvatarWithStatus(Bitmap avatar, StatusType statusType, String icon, Context context) {
+    public static Bitmap createAvatarWithStatus(Bitmap avatar, StatusType statusType, @NonNull String icon, Context context) {
         float avatarRadius = getResources().getDimension(R.dimen.list_item_avatar_icon_radius);
         int width = DisplayUtils.convertDpToPixel(2 * avatarRadius, context);
 
@@ -451,6 +455,42 @@ public final class BitmapUtils {
         statusDrawable.draw(canvas);
 
         return output;
+    }
+
+    /**
+     * Inspired from https://www.demo2s.com/android/android-bitmap-get-a-round-version-of-the-bitmap.html
+     */
+    public static Bitmap roundBitmap(Bitmap bitmap) {
+        Bitmap output = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+
+        final Canvas canvas = new Canvas(output);
+
+        final int color = R.color.white;
+        final Paint paint = new Paint();
+        final Rect rect = new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight());
+        final RectF rectF = new RectF(rect);
+
+        paint.setAntiAlias(true);
+        canvas.drawARGB(0, 0, 0, 0);
+        paint.setColor(getResources().getColor(color, null));
+        canvas.drawOval(rectF, paint);
+
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        canvas.drawBitmap(bitmap, rect, rect, paint);
+
+        return output;
+    }
+
+    /**
+     * from https://stackoverflow.com/a/38249623
+     **/
+    public static Bitmap tintImage(Bitmap bitmap, int color) {
+        Paint paint = new Paint();
+        paint.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
+        Bitmap bitmapResult = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmapResult);
+        canvas.drawBitmap(bitmap, 0, 0, paint);
+        return bitmapResult;
     }
 
     /**

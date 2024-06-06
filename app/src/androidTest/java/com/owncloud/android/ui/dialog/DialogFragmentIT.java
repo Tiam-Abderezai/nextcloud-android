@@ -1,36 +1,28 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2020 Tobias Kaminsky
- * Copyright (C) 2020 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.dialog;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.content.Intent;
+import android.net.http.SslCertificate;
+import android.net.http.SslError;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.SslErrorHandler;
 import android.widget.TextView;
 
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.gson.Gson;
+import com.nextcloud.android.common.ui.color.ColorUtil;
+import com.nextcloud.android.common.ui.theme.MaterialSchemes;
+import com.nextcloud.android.common.ui.theme.MaterialSchemesImpl;
 import com.nextcloud.android.lib.resources.profile.Action;
 import com.nextcloud.android.lib.resources.profile.HoverCard;
 import com.nextcloud.client.account.RegisteredUser;
@@ -38,10 +30,15 @@ import com.nextcloud.client.account.Server;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.device.DeviceInfo;
+import com.nextcloud.client.documentscan.AppScanOptionalFeature;
 import com.nextcloud.ui.ChooseAccountDialogFragment;
+import com.nextcloud.ui.fileactions.FileActionsBottomSheet;
+import com.nextcloud.utils.EditorUtils;
 import com.owncloud.android.AbstractIT;
 import com.owncloud.android.MainApp;
+import com.owncloud.android.R;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.lib.common.Creator;
@@ -57,15 +54,18 @@ import com.owncloud.android.lib.resources.users.Status;
 import com.owncloud.android.lib.resources.users.StatusType;
 import com.owncloud.android.ui.activity.FileDisplayActivity;
 import com.owncloud.android.ui.fragment.OCFileListBottomSheetActions;
-import com.owncloud.android.ui.fragment.OCFileListBottomSheetDialogFragment;
+import com.owncloud.android.ui.fragment.OCFileListBottomSheetDialog;
 import com.owncloud.android.ui.fragment.ProfileBottomSheetDialog;
 import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.ScreenshotTest;
 import com.owncloud.android.utils.theme.CapabilityUtils;
+import com.owncloud.android.utils.theme.MaterialSchemesProvider;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -73,8 +73,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import androidx.activity.result.contract.ActivityResultContract;
+import androidx.annotation.NonNull;
 import androidx.fragment.app.DialogFragment;
 import androidx.test.espresso.intent.rule.IntentsTestRule;
+import kotlin.Unit;
 
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
@@ -89,7 +92,7 @@ public class DialogFragmentIT extends AbstractIT {
         Intent intent = new Intent(targetContext, FileDisplayActivity.class);
         return activityRule.launchActivity(intent);
     }
-
+    
 
     @After
     public void quitLooperIfNeeded() {
@@ -114,6 +117,38 @@ public class DialogFragmentIT extends AbstractIT {
     public void testLoadingDialog() {
         LoadingDialog dialog = LoadingDialog.newInstance("Wait…");
         showDialog(dialog);
+    }
+
+    @Test
+    @ScreenshotTest
+    public void testConfirmationDialogWithOneAction() {
+        ConfirmationDialogFragment dialog = ConfirmationDialogFragment.newInstance(R.string.upload_list_empty_text_auto_upload, new String[]{}, R.string.filedetails_sync_file, R.string.common_ok, -1, -1);
+        showDialog(dialog);
+    }
+
+    @Test
+    @ScreenshotTest
+    public void testConfirmationDialogWithTwoAction() {
+        ConfirmationDialogFragment dialog = ConfirmationDialogFragment.newInstance(R.string.upload_list_empty_text_auto_upload, new String[]{}, R.string.filedetails_sync_file, R.string.common_ok, R.string.common_cancel, -1);
+        showDialog(dialog);
+    }
+
+    @Test
+    @ScreenshotTest
+    public void testConfirmationDialogWithThreeAction() {
+        ConfirmationDialogFragment dialog = ConfirmationDialogFragment.newInstance(R.string.upload_list_empty_text_auto_upload, new String[]{}, R.string.filedetails_sync_file, R.string.common_ok, R.string.common_cancel, R.string.common_confirm);
+        showDialog(dialog);
+    }
+
+    @Test
+    @ScreenshotTest
+    public void testConfirmationDialogWithThreeActionRTL() {
+        enableRTL();
+
+        ConfirmationDialogFragment dialog = ConfirmationDialogFragment.newInstance(R.string.upload_list_empty_text_auto_upload, new String[] { }, -1, R.string.common_ok, R.string.common_cancel, R.string.common_confirm);
+        showDialog(dialog);
+
+        resetLocale();
     }
 
     @Test
@@ -198,6 +233,7 @@ public class DialogFragmentIT extends AbstractIT {
         accountManager.setUserData(newAccount, AccountUtils.Constants.KEY_USER_ID, "test");
         accountManager.setAuthToken(newAccount, AccountTypeUtils.getAuthTokenTypePass(newAccount.type), "password");
         User newUser = userAccountManager.getUser(newAccount.name).orElseThrow(RuntimeException::new);
+        userAccountManager.setCurrentOwnCloudAccount(newAccount.name);
 
         Account newAccount2 = new Account("user1@nextcloud.localhost", MainApp.getAccountType(targetContext));
         accountManager.addAccountExplicitly(newAccount2, "password", null);
@@ -338,7 +374,7 @@ public class DialogFragmentIT extends AbstractIT {
 
             @Override
             public void scanDocUpload() {
-                
+
             }
 
             @Override
@@ -361,31 +397,31 @@ public class DialogFragmentIT extends AbstractIT {
         // add direct editing info
         DirectEditing directEditing = new DirectEditing();
         directEditing.getCreators().put("1", new Creator("1",
-                                                    "text",
-                                                    "text file",
-                                                    ".md",
-                                                    "application/octet-stream",
-                                                    false));
+                                                         "text",
+                                                         "text file",
+                                                         ".md",
+                                                         "application/octet-stream",
+                                                         false));
 
         directEditing.getCreators().put("2", new Creator("2",
-                                                    "md",
-                                                    "markdown file",
-                                                    ".md",
-                                                    "application/octet-stream",
-                                                    false));
+                                                         "md",
+                                                         "markdown file",
+                                                         ".md",
+                                                         "application/octet-stream",
+                                                         false));
 
         directEditing.getEditors().put("text",
-                                  new Editor("1",
-                                             "Text",
-                                             new ArrayList<>(Collections.singletonList(MimeTypeUtil.MIMETYPE_TEXT_MARKDOWN)),
-                                             new ArrayList<>(),
-                                             false));
+                                       new Editor("1",
+                                                  "Text",
+                                                  new ArrayList<>(Collections.singletonList(MimeTypeUtil.MIMETYPE_TEXT_MARKDOWN)),
+                                                  new ArrayList<>(),
+                                                  false));
 
         String json = new Gson().toJson(directEditing);
 
-        new ArbitraryDataProvider(targetContext.getContentResolver()).storeOrUpdateKeyValue(user.getAccountName(),
-                                                                                            ArbitraryDataProvider.DIRECT_EDITING,
-                                                                                            json);
+        new ArbitraryDataProviderImpl(targetContext).storeOrUpdateKeyValue(user.getAccountName(),
+                                                                           ArbitraryDataProvider.DIRECT_EDITING,
+                                                                           json);
 
         // activate templates
         OCCapability capability = fda.getCapabilities();
@@ -396,13 +432,77 @@ public class DialogFragmentIT extends AbstractIT {
 
         CapabilityUtils.updateCapability(capability);
 
-        OCFileListBottomSheetDialogFragment sut = new OCFileListBottomSheetDialogFragment(fda,
-                                                                                  action,
-                                                                                  info,
-                                                                                  user,
-                                                                                  ocFile);
+        AppScanOptionalFeature appScanOptionalFeature = new AppScanOptionalFeature() {
+            @NonNull
+            @Override
+            public ActivityResultContract<Unit, String> getScanContract() {
+                throw new UnsupportedOperationException("Document scan is not available");
+            }
+        };
 
-        showDialog(fda, sut);
+        MaterialSchemesProvider materialSchemesProvider = new MaterialSchemesProvider() {
+            @NonNull
+            @Override
+            public MaterialSchemes getMaterialSchemesForUser(@NonNull User user) {
+                return null;
+            }
+
+            @NonNull
+            @Override
+            public MaterialSchemes getMaterialSchemesForCapability(@NonNull OCCapability capability) {
+                return null;
+            }
+
+            @NonNull
+            @Override
+            public MaterialSchemes getMaterialSchemesForCurrentUser() {
+                return new MaterialSchemesImpl(R.color.primary, false);
+            }
+
+            @NonNull
+            @Override
+            public MaterialSchemes getDefaultMaterialSchemes() {
+                return null;
+            }
+
+            @NonNull
+            @Override
+            public MaterialSchemes getMaterialSchemesForPrimaryBackground() {
+                return null;
+            }
+        };
+
+        ViewThemeUtils viewThemeUtils = new ViewThemeUtils(materialSchemesProvider.getMaterialSchemesForCurrentUser(),
+                                                           new ColorUtil(targetContext));
+
+        EditorUtils editorUtils = new EditorUtils(new ArbitraryDataProviderImpl(targetContext));
+
+
+        OCFileListBottomSheetDialog sut = new OCFileListBottomSheetDialog(fda,
+                                                                          action,
+                                                                          info,
+                                                                          user,
+                                                                          ocFile,
+                                                                          fda.themeUtils,
+                                                                          viewThemeUtils,
+                                                                          editorUtils,
+                                                                          appScanOptionalFeature);
+
+        fda.runOnUiThread(sut::show);
+
+        getInstrumentation().waitForIdleSync();
+        shortSleep();
+
+        sut.getBehavior().setState(BottomSheetBehavior.STATE_EXPANDED);
+
+        getInstrumentation().waitForIdleSync();
+        shortSleep();
+
+        ViewGroup viewGroup = sut.getWindow().findViewById(android.R.id.content);
+        hideCursors(viewGroup);
+
+        screenshot(Objects.requireNonNull(sut.getWindow()).getDecorView());
+
     }
 
     @Test
@@ -438,14 +538,54 @@ public class DialogFragmentIT extends AbstractIT {
         ProfileBottomSheetDialog sut = new ProfileBottomSheetDialog(fda,
                                                                     user,
                                                                     hoverCard,
-                                                                    fda.themeColorUtils,
-                                                                    fda.themeDrawableUtils);
+                                                                    fda.viewThemeUtils);
 
         fda.runOnUiThread(sut::show);
 
         waitForIdleSync();
 
         screenshot(sut.getWindow().getDecorView());
+    }
+
+
+    @Test
+    @ScreenshotTest
+    public void testSslUntrustedCertDialog() {
+        if (Looper.myLooper() == null) {
+            Looper.prepare();
+        }
+
+        final SslCertificate certificate = new SslCertificate("foo", "bar", "2022/01/10", "2022/01/30");
+        final SslError sslError = new SslError(SslError.SSL_UNTRUSTED, certificate);
+
+        final SslErrorHandler handler = Mockito.mock(SslErrorHandler.class);
+
+        SslUntrustedCertDialog sut = SslUntrustedCertDialog.newInstanceForEmptySslError(sslError, handler);
+        showDialog(sut);
+    }
+
+
+    @Test
+    @ScreenshotTest
+    public void testStoragePermissionDialog() {
+        if (Looper.myLooper() == null) {
+            Looper.prepare();
+        }
+
+        StoragePermissionDialogFragment sut = StoragePermissionDialogFragment.Companion.newInstance(false);
+        showDialog(sut);
+    }
+
+    @Test
+    @ScreenshotTest
+    public void testFileActionsBottomSheet() {
+        if (Looper.myLooper() == null) {
+            Looper.prepare();
+        }
+
+        OCFile ocFile = new OCFile("/test.md");
+        final FileActionsBottomSheet sut = FileActionsBottomSheet.newInstance(ocFile, false);
+        showDialog(sut);
     }
 
     private FileDisplayActivity showDialog(DialogFragment dialog) {

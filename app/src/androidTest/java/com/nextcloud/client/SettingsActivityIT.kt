@@ -1,34 +1,21 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2019 Tobias Kaminsky
- * Copyright (C) 2019 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client
 
 import android.app.Activity
-import com.owncloud.android.AbstractIT
-import androidx.test.espresso.intent.rule.IntentsTestRule
-import com.owncloud.android.ui.activity.SettingsActivity
-import android.os.Looper
 import android.content.Intent
+import android.os.Looper
+import androidx.test.espresso.intent.rule.IntentsTestRule
+import com.nextcloud.test.GrantStoragePermissionRule
+import com.owncloud.android.AbstractIT
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl
 import com.owncloud.android.ui.activity.RequestCredentialsActivity
-import com.owncloud.android.datamodel.ArbitraryDataProvider
+import com.owncloud.android.ui.activity.SettingsActivity
 import com.owncloud.android.utils.EncryptionUtils
 import com.owncloud.android.utils.ScreenshotTest
 import org.junit.Assert
@@ -71,7 +58,7 @@ class SettingsActivityIT : AbstractIT() {
         }
         val intent = Intent()
         intent.putExtra(RequestCredentialsActivity.KEY_CHECK_RESULT, RequestCredentialsActivity.KEY_CHECK_RESULT_TRUE)
-        val arbitraryDataProvider = ArbitraryDataProvider(targetContext.contentResolver)
+        val arbitraryDataProvider = ArbitraryDataProviderImpl(targetContext)
         arbitraryDataProvider.storeOrUpdateKeyValue(user.accountName, EncryptionUtils.MNEMONIC, "Secret mnemonic")
         val sut = activityRule.launchActivity(null)
         sut.runOnUiThread {

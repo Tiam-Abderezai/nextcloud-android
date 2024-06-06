@@ -1,25 +1,12 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * @author Chris Narkiewicz
- *
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro.brey@nextcloud.com>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: GPL-3.0-or-later AND AGPL-3.0-or-later
  */
 package com.owncloud.android.ui.dialog
 
@@ -30,11 +17,11 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
-import android.view.WindowManager
-import android.widget.Button
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.GridLayoutManager
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.nextcloud.android.lib.resources.directediting.DirectEditingCreateFileRemoteOperation
 import com.nextcloud.android.lib.resources.directediting.DirectEditingObtainListOfTemplatesRemoteOperation
 import com.nextcloud.client.account.CurrentAccountProvider
@@ -42,6 +29,7 @@ import com.nextcloud.client.account.User
 import com.nextcloud.client.di.Injectable
 import com.nextcloud.client.network.ClientFactory
 import com.nextcloud.client.network.ClientFactory.CreationException
+import com.nextcloud.utils.extensions.getParcelableArgument
 import com.owncloud.android.MainApp
 import com.owncloud.android.R
 import com.owncloud.android.databinding.ChooseTemplateBinding
@@ -58,10 +46,8 @@ import com.owncloud.android.ui.activity.TextEditorWebView
 import com.owncloud.android.ui.adapter.TemplateAdapter
 import com.owncloud.android.utils.DisplayUtils
 import com.owncloud.android.utils.FileStorageUtils
-import com.owncloud.android.utils.theme.ThemeButtonUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
-import com.owncloud.android.utils.theme.ThemeTextInputUtils
+import com.owncloud.android.utils.KeyboardUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 
@@ -70,6 +56,8 @@ import javax.inject.Inject
  */
 class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, TemplateAdapter.ClickListener, Injectable {
 
+    private lateinit var fileNames: List<String>
+
     @Inject
     lateinit var clientFactory: ClientFactory
 
@@ -77,24 +65,18 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
     lateinit var currentAccount: CurrentAccountProvider
 
     @Inject
-    lateinit var themeColorUtils: ThemeColorUtils
-
-    @Inject
-    lateinit var themeDrawableUtils: ThemeDrawableUtils
-
-    @Inject
-    lateinit var themeButtonUtils: ThemeButtonUtils
-
-    @Inject
-    lateinit var themeTextInputUtils: ThemeTextInputUtils
-
-    @Inject
     lateinit var fileDataStorageManager: FileDataStorageManager
+
+    @Inject
+    lateinit var viewThemeUtils: ViewThemeUtils
+
+    @Inject
+    lateinit var keyboardUtils: KeyboardUtils
 
     private var adapter: TemplateAdapter? = null
     private var parentFolder: OCFile? = null
     private var title: String? = null
-    private var positiveButton: Button? = null
+    private var positiveButton: MaterialButton? = null
     private var creator: Creator? = null
 
     enum class Type {
@@ -107,55 +89,55 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
     override fun onStart() {
         super.onStart()
         val alertDialog = dialog as AlertDialog
-        val button = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE)
 
-        themeButtonUtils.themeBorderlessButton(
-            themeColorUtils,
-            button,
-            alertDialog.getButton(AlertDialog.BUTTON_NEUTRAL)
-        )
-        button.setOnClickListener(this)
-        button.isEnabled = false
+        val positiveButton = alertDialog.getButton(AlertDialog.BUTTON_POSITIVE) as MaterialButton
+        viewThemeUtils.material.colorMaterialButtonPrimaryTonal(positiveButton)
 
-        positiveButton = button
+        val negativeButton = alertDialog.getButton(AlertDialog.BUTTON_NEGATIVE) as MaterialButton
+        viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(negativeButton)
+
+        positiveButton.setOnClickListener(this)
+        positiveButton.isEnabled = false
+        positiveButton.isClickable = false
+
+        this.positiveButton = positiveButton
         checkEnablingCreateButton()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        keyboardUtils.showKeyboardForEditText(dialog?.window, binding.filename)
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val arguments = arguments ?: throw IllegalArgumentException("Arguments may not be null")
         val activity = activity ?: throw IllegalArgumentException("Activity may not be null")
 
-        parentFolder = arguments.getParcelable(ARG_PARENT_FOLDER)
-        creator = arguments.getParcelable(ARG_CREATOR)
+        parentFolder = arguments.getParcelableArgument(ARG_PARENT_FOLDER, OCFile::class.java)
+        creator = arguments.getParcelableArgument(ARG_CREATOR, Creator::class.java)
+
         title = arguments.getString(ARG_HEADLINE, getString(R.string.select_template))
         title = when (savedInstanceState) {
             null -> arguments.getString(ARG_HEADLINE)
             else -> savedInstanceState.getString(ARG_HEADLINE)
         }
 
-        val fileNames = fileDataStorageManager.getFolderContent(parentFolder, false).map { it.fileName }
+        fileNames = fileDataStorageManager.getFolderContent(parentFolder, false).map { it.fileName }
 
         // Inflate the layout for the dialog
         val inflater = requireActivity().layoutInflater
         _binding = ChooseTemplateBinding.inflate(inflater, null, false)
         val view: View = binding.root
 
-        binding.filename.requestFocus()
-        themeTextInputUtils.colorTextInput(
-            binding.filenameContainer,
-            binding.filename,
-            themeColorUtils.primaryColor(context),
-            themeColorUtils.primaryAccentColor(context)
+        viewThemeUtils.material.colorTextInputLayout(
+            binding.filenameContainer
         )
-        binding.filename.setOnKeyListener { _, _, _ ->
-            checkEnablingCreateButton()
-            false
-        }
+
         binding.filename.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) = Unit
 
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
-                checkExistingFilename(fileNames)
+                // not needed
             }
 
             override fun afterTextChanged(s: Editable) {
@@ -173,21 +155,20 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
             context,
             currentAccount,
             clientFactory,
-            themeColorUtils,
-            themeDrawableUtils
+            viewThemeUtils
         )
         binding.list.adapter = adapter
 
         // Build the dialog
-        val builder = AlertDialog.Builder(activity)
+        val builder = MaterialAlertDialogBuilder(activity)
         builder.setView(view)
             .setPositiveButton(R.string.create, null)
-            .setNeutralButton(R.string.common_cancel, null)
+            .setNegativeButton(R.string.common_cancel, null)
             .setTitle(title)
-        val dialog: Dialog = builder.create()
-        val window = dialog.window
-        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-        return dialog
+
+        viewThemeUtils.dialog.colorMaterialAlertDialogBackground(binding.list.context, builder)
+
+        return builder.create()
     }
 
     @Suppress("TooGenericExceptionCaught") // legacy code
@@ -215,8 +196,8 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
     }
 
     fun setTemplateList(templateList: TemplateList?) {
-        adapter!!.setTemplateList(templateList)
-        adapter!!.notifyDataSetChanged()
+        adapter?.setTemplateList(templateList)
+        adapter?.notifyDataSetChanged()
     }
 
     override fun onClick(template: Template) {
@@ -259,26 +240,25 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
     private fun checkEnablingCreateButton() {
         if (positiveButton != null) {
             val selectedTemplate = adapter!!.selectedTemplate
-            val name = binding.filename.text.toString()
-            positiveButton!!.isEnabled = selectedTemplate != null && name.isNotEmpty() &&
-                !name.equals(DOT + selectedTemplate.extension, ignoreCase = true)
-        }
-    }
+            val name = binding.filename.text.toString().trim()
+            val isNameJustExtension = selectedTemplate != null && name.equals(
+                DOT + selectedTemplate.extension,
+                ignoreCase = true
+            )
+            val isNameEmpty = name.isEmpty() || isNameJustExtension
+            val state = selectedTemplate != null && !isNameEmpty && !fileNames.contains(name)
 
-    private fun checkExistingFilename(fileNames: List<String>) {
-        var newFileName = ""
-        if (binding.filename.text != null) {
-            newFileName = binding.filename.text.toString().trim()
-        }
+            positiveButton?.isEnabled = state
+            positiveButton?.isClickable = state
+            binding.filenameContainer.isErrorEnabled = !state
 
-        if (fileNames.contains(newFileName)) {
-            binding.filenameContainer.error = getText(R.string.file_already_exists)
-            positiveButton?.isEnabled = false
-        } else if (binding.filenameContainer.error != null) {
-            binding.filenameContainer.error = null
-            // Called to remove extra padding
-            binding.filenameContainer.isErrorEnabled = false
-            positiveButton?.isEnabled = true
+            if (!state) {
+                if (isNameEmpty) {
+                    binding.filenameContainer.error = getText(R.string.filename_empty)
+                } else {
+                    binding.filenameContainer.error = getText(R.string.file_already_exists)
+                }
+            }
         }
     }
 
@@ -337,7 +317,7 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
             val fragment = chooseTemplateDialogFragmentWeakReference.get()
             if (fragment != null && fragment.isAdded) {
                 if (url.isEmpty()) {
-                    DisplayUtils.showSnackMessage(fragment.binding.list, "Error creating file from template")
+                    DisplayUtils.showSnackMessage(fragment.binding.list, R.string.error_creating_file_from_template)
                 } else {
                     val editorWebView = Intent(MainApp.getAppContext(), TextEditorWebView::class.java)
                     editorWebView.putExtra(ExternalSiteWebView.EXTRA_TITLE, "Text")
@@ -380,7 +360,9 @@ class ChooseTemplateDialogFragment : DialogFragment(), View.OnClickListener, Tem
                     .execute(client)
                 if (!result.isSuccess) {
                     TemplateList()
-                } else result.resultData
+                } else {
+                    result.resultData
+                }
             } catch (e: CreationException) {
                 Log_OC.e(TAG, "Could not fetch template", e)
                 TemplateList()

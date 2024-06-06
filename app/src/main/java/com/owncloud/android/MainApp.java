@@ -1,23 +1,17 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author masensio
- * @author David A. Velasco
- * @author Chris Narkiewicz
- * Copyright (C) 2015 ownCloud Inc.
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2022-2023 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2016-2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2019 Alice Gaudon <alice@gaudon.pro>
+ * SPDX-FileCopyrightText: 2016 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2013 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android;
 
@@ -27,12 +21,16 @@ import android.app.ActivityManager;
 import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.RestrictionsManager;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -40,6 +38,7 @@ import android.os.StrictMode;
 import android.text.TextUtils;
 import android.view.WindowManager;
 
+import com.nextcloud.appReview.InAppReviewHelper;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.appinfo.AppInfo;
@@ -54,16 +53,21 @@ import com.nextcloud.client.logger.LegacyLoggerAdapter;
 import com.nextcloud.client.logger.Logger;
 import com.nextcloud.client.migrations.MigrationsManager;
 import com.nextcloud.client.network.ConnectivityService;
+import com.nextcloud.client.network.WalledCheckCache;
 import com.nextcloud.client.onboarding.OnboardingService;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.nextcloud.client.preferences.AppPreferencesImpl;
 import com.nextcloud.client.preferences.DarkMode;
+import com.nextcloud.utils.extensions.ContextExtensionsKt;
+import com.nmc.android.ui.LauncherActivity;
 import com.owncloud.android.authentication.AuthenticatorActivity;
 import com.owncloud.android.authentication.PassCodeManager;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.MediaFolder;
 import com.owncloud.android.datamodel.MediaFolderType;
 import com.owncloud.android.datamodel.MediaProvider;
+import com.owncloud.android.datamodel.ReceiverFlag;
 import com.owncloud.android.datamodel.SyncedFolder;
 import com.owncloud.android.datamodel.SyncedFolderProvider;
 import com.owncloud.android.datamodel.ThumbnailsCacheManager;
@@ -72,15 +76,17 @@ import com.owncloud.android.datastorage.DataStorageProvider;
 import com.owncloud.android.datastorage.StoragePoint;
 import com.owncloud.android.lib.common.OwnCloudClientManagerFactory;
 import com.owncloud.android.lib.common.utils.Log_OC;
+import com.owncloud.android.lib.resources.status.NextcloudVersion;
 import com.owncloud.android.lib.resources.status.OwnCloudVersion;
 import com.owncloud.android.ui.activity.SyncedFoldersActivity;
 import com.owncloud.android.ui.notifications.NotificationUtils;
+import com.owncloud.android.utils.appConfig.AppConfigManager;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.FilesSyncHelper;
 import com.owncloud.android.utils.PermissionUtil;
 import com.owncloud.android.utils.ReceiversHelper;
 import com.owncloud.android.utils.SecurityUtils;
-import com.owncloud.android.utils.theme.ThemeSnackbarUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.conscrypt.Conscrypt;
 import org.greenrobot.eventbus.EventBus;
@@ -96,15 +102,18 @@ import java.util.Locale;
 import java.util.Map;
 
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.StringRes;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.util.Pair;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleEventObserver;
+import androidx.lifecycle.ProcessLifecycleOwner;
 import androidx.multidex.MultiDexApplication;
 import dagger.android.AndroidInjector;
 import dagger.android.DispatchingAndroidInjector;
@@ -117,13 +126,11 @@ import static com.owncloud.android.ui.activity.ContactsPreferenceActivity.PREFER
 
 
 /**
- * Main Application of the project
- * <p>
- * Contains methods to build the "static" strings. These strings were before constants in different classes
+ * Main Application of the project.
+ * Contains methods to build the "static" strings. These strings were before constants in different classes.
  */
 public class MainApp extends MultiDexApplication implements HasAndroidInjector {
-
-    public static final OwnCloudVersion OUTDATED_SERVER_VERSION = OwnCloudVersion.nextcloud_19;
+    public static final OwnCloudVersion OUTDATED_SERVER_VERSION = NextcloudVersion.nextcloud_26;
     public static final OwnCloudVersion MINIMUM_SUPPORTED_SERVER_VERSION = OwnCloudVersion.nextcloud_16;
 
     private static final String TAG = MainApp.class.getSimpleName();
@@ -134,6 +141,7 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     private static String storagePath;
 
     private static boolean mOnlyOnDevice;
+    private static boolean mOnlyPersonalFiles;
 
     @Inject
     protected AppPreferences preferences;
@@ -152,6 +160,9 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
 
     @Inject
     ConnectivityService connectivityService;
+
+    @Inject
+    SyncedFolderProvider syncedFolderProvider;
 
     @Inject PowerManagementService powerManagementService;
 
@@ -174,12 +185,22 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     MigrationsManager migrationsManager;
 
     @Inject
+    InAppReviewHelper inAppReviewHelper;
+
+    @Inject
     PassCodeManager passCodeManager;
 
-    @Inject ThemeSnackbarUtils themeSnackbarUtils;
+    @Inject WalledCheckCache walledCheckCache;
+
+    // workaround because injection is initialized on onAttachBaseContext
+    // and getApplicationContext is null at that point, which crashes when getting current user
+    @Inject Provider<ViewThemeUtils> viewThemeUtilsProvider;
+    private ViewThemeUtils viewThemeUtils;
 
     @SuppressWarnings("unused")
     private boolean mBound;
+
+    private AppConfigManager appConfigManager;
 
     private static AppComponent appComponent;
 
@@ -239,9 +260,12 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
 
         if (!isCrashReportingProcess && !appInfo.isDebugBuild()) {
             Thread.UncaughtExceptionHandler defaultPlatformHandler = Thread.getDefaultUncaughtExceptionHandler();
-            final ExceptionHandler crashReporter = new ExceptionHandler(this,
-                                                                        defaultPlatformHandler);
-            Thread.setDefaultUncaughtExceptionHandler(crashReporter);
+
+            if (defaultPlatformHandler != null) {
+                final ExceptionHandler crashReporter = new ExceptionHandler(this,
+                                                                            defaultPlatformHandler);
+                Thread.setDefaultUncaughtExceptionHandler(crashReporter);
+            }
         }
     }
 
@@ -268,19 +292,27 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         return appComponent;
     }
 
+
     @SuppressFBWarnings("ST")
     @Override
     public void onCreate() {
         enableStrictMode();
 
+        viewThemeUtils = viewThemeUtilsProvider.get();
+
         setAppTheme(preferences.getDarkThemeMode());
         super.onCreate();
+
+        ProcessLifecycleOwner.get().getLifecycle().addObserver(lifecycleEventObserver);
 
         insertConscrypt();
 
         initSecurityKeyManager();
 
         registerActivityLifecycleCallbacks(new ActivityInjector());
+
+        //update the app restart count when app is launched by the user
+        inAppReviewHelper.resetAndIncrementAppRestartCounter();
 
         int startedMigrationsCount = migrationsManager.startMigration();
         logger.i(TAG, String.format(Locale.US, "Started %d migrations", startedMigrationsCount));
@@ -294,6 +326,17 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
 
         OwnCloudClientManagerFactory.setUserAgent(getUserAgent());
 
+        if (isClientBrandedPlus()) {
+            RestrictionsManager restrictionsManager = (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+            appConfigManager = new AppConfigManager(this, restrictionsManager.getApplicationRestrictions());
+            appConfigManager.setProxyConfig(isClientBrandedPlus());
+
+            // Listen app config changes
+            ContextExtensionsKt.registerBroadcastReceiver(this, restrictionsReceiver, restrictionsFilter, ReceiverFlag.NotExported);
+        } else {
+            setProxyForNonBrandedPlusClients();
+        }
+
         // initialise thumbnails cache on background thread
         new ThumbnailsCacheManager.InitDiskCacheTask().execute();
 
@@ -304,14 +347,13 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
             Log_OC.d("Debug", "start logging");
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                Method m = StrictMode.class.getMethod("disableDeathOnFileUriExposure");
-                m.invoke(null);
-            } catch (Exception e) {
-                Log_OC.d("Debug", "Failed to disable uri exposure");
-            }
+        try {
+            Method m = StrictMode.class.getMethod("disableDeathOnFileUriExposure");
+            m.invoke(null);
+        } catch (Exception e) {
+            Log_OC.d("Debug", "Failed to disable uri exposure");
         }
+
         initSyncOperations(preferences,
                            uploadsStorageManager,
                            accountManager,
@@ -319,15 +361,54 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
                            powerManagementService,
                            backgroundJobManager,
                            clock,
-                           themeSnackbarUtils);
+                           viewThemeUtils,
+                           walledCheckCache,
+                           syncedFolderProvider);
         initContactsBackup(accountManager, backgroundJobManager);
         notificationChannels();
 
         backgroundJobManager.scheduleMediaFoldersDetectionJob();
         backgroundJobManager.startMediaFoldersDetectionJob();
 
+        backgroundJobManager.schedulePeriodicHealthStatus();
+
         registerGlobalPassCodeProtection();
     }
+
+    private final LifecycleEventObserver lifecycleEventObserver = ((lifecycleOwner, event) -> {
+        if (event == Lifecycle.Event.ON_START) {
+            Log_OC.d(TAG, "APP IN FOREGROUND");
+        } else if (event == Lifecycle.Event.ON_STOP) {
+            passCodeManager.setCanAskPin(true);
+            Log_OC.d(TAG, "APP IN BACKGROUND");
+        } else if (event == Lifecycle.Event.ON_RESUME) {
+            if (appConfigManager == null) return;
+            appConfigManager.setProxyConfig(isClientBrandedPlus());
+            Log_OC.d(TAG, "APP ON RESUME");
+        }
+    });
+
+    private void setProxyForNonBrandedPlusClients() {
+        try {
+            OwnCloudClientManagerFactory.setProxyHost(getResources().getString(R.string.proxy_host));
+            OwnCloudClientManagerFactory.setProxyPort(getResources().getInteger(R.integer.proxy_port));
+        } catch (Resources.NotFoundException e) {
+            Log_OC.d(TAG, "Error caught at setProxyForNonBrandedPlusClients: " + e);
+        }
+    }
+
+    public static boolean isClientBrandedPlus() {
+        return (getAppContext().getResources().getBoolean(R.bool.is_branded_plus_client));
+    }
+
+    private final IntentFilter restrictionsFilter = new IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED);
+
+    private final BroadcastReceiver restrictionsReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (appConfigManager == null) return;
+            appConfigManager.setProxyConfig(isClientBrandedPlus());
+        }
+    };
 
     private void registerGlobalPassCodeProtection() {
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
@@ -346,7 +427,11 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
             @Override
             public void onActivityResumed(@NonNull Activity activity) {
                 Log_OC.d(activity.getClass().getSimpleName(), "onResume() starting");
-                passCodeManager.onActivityResumed(activity);
+                // we are checking activity is not launcher activity because there is timer in launcher
+                // which will reopen the passcode screen
+                if (!(activity instanceof LauncherActivity)) {
+                    passCodeManager.onActivityResumed(activity);
+                }
             }
 
             @Override
@@ -357,7 +442,11 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
             @Override
             public void onActivityStopped(@NonNull Activity activity) {
                 Log_OC.d(activity.getClass().getSimpleName(), "onStop() ending");
-                passCodeManager.onActivityStopped(activity);
+                // since we are not showing passcode on launch activity
+                // so we don't need to call the stopped method as well
+                if (!(activity instanceof LauncherActivity)) {
+                    passCodeManager.onActivityStopped(activity);
+                }
             }
 
             @Override
@@ -402,7 +491,7 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     }
 
     public static void initContactsBackup(UserAccountManager accountManager, BackgroundJobManager backgroundJobManager) {
-        ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProvider(mContext.getContentResolver());
+        ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProviderImpl(mContext);
         List<User> users = accountManager.getAllUsers();
         for (User user : users) {
             if (arbitraryDataProvider.getBooleanValue(user, PREFERENCE_CONTACTS_AUTOMATIC_BACKUP)) {
@@ -476,7 +565,8 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     }
 
     private void enableStrictMode() {
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG && BuildConfig.RUNTIME_PERF_ANALYSIS) {
+            Log_OC.d(TAG, "Enabling StrictMode");
             StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
                                            .detectDiskReads()
                                            .detectDiskWrites()
@@ -499,27 +589,28 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         final PowerManagementService powerManagementService,
         final BackgroundJobManager backgroundJobManager,
         final Clock clock,
-        final ThemeSnackbarUtils themeSnackbarUtils
-                                         ) {
+        final ViewThemeUtils viewThemeUtils,
+        final WalledCheckCache walledCheckCache,
+        final SyncedFolderProvider syncedFolderProvider) {
         updateToAutoUpload();
         cleanOldEntries(clock);
         updateAutoUploadEntries(clock);
 
         if (getAppContext() != null) {
             if (PermissionUtil.checkExternalStoragePermission(getAppContext())) {
-                splitOutAutoUploadEntries(clock, themeSnackbarUtils);
+                splitOutAutoUploadEntries(clock, viewThemeUtils);
             } else {
                 preferences.setAutoUploadSplitEntriesEnabled(true);
             }
         }
 
         if (!preferences.isAutoUploadInitialized()) {
-            backgroundJobManager.startImmediateFilesSyncJob(false, false);
+            FilesSyncHelper.startFilesSyncForAllFolders(syncedFolderProvider, backgroundJobManager,false, new String[]{});
             preferences.setAutoUploadInit(true);
         }
 
-        FilesSyncHelper.scheduleFilesSyncIfNeeded(mContext, backgroundJobManager);
-        FilesSyncHelper.restartJobsIfNeeded(
+        FilesSyncHelper.scheduleFilesSyncForAllFoldersIfNeeded(mContext, syncedFolderProvider, backgroundJobManager);
+        FilesSyncHelper.restartUploadsIfNeeded(
             uploadsStorageManager,
             accountManager,
             connectivityService,
@@ -530,7 +621,8 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         ReceiversHelper.registerNetworkChangeReceiver(uploadsStorageManager,
                                                       accountManager,
                                                       connectivityService,
-                                                      powerManagementService);
+                                                      powerManagementService,
+                                                      walledCheckCache);
 
         ReceiversHelper.registerPowerChangeReceiver(uploadsStorageManager,
                                                     accountManager,
@@ -581,7 +673,6 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     private static void createChannel(NotificationManager notificationManager,
                                       String channelId, int channelName,
                                       int channelDescription, Context context) {
@@ -605,6 +696,13 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         }
     }
 
+    public static String string(int id) {
+        return getAppContext().getString(id);
+    }
+
+    public static String string(int id, Object args) {
+        return getAppContext().getString(id, args);
+    }
 
     public static Context getAppContext() {
         return MainApp.mContext;
@@ -632,41 +730,48 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     //  From AccountAuthenticator
     //  public static final String AUTHORITY = "org.owncloud";
     public static String getAuthority() {
-        return getAppContext().getResources().getString(R.string.authority);
+        return string(R.string.authority);
     }
 
     //  From AccountAuthenticator
     //  public static final String AUTH_TOKEN_TYPE = "org.owncloud";
     public static String getAuthTokenType() {
-        return getAppContext().getResources().getString(R.string.authority);
+        return string(R.string.authority);
     }
 
     //  From ProviderMeta
     //  public static final String DB_FILE = "owncloud.db";
     public static String getDBFile() {
-        return getAppContext().getResources().getString(R.string.db_file);
+        return string(R.string.db_file);
     }
 
     //  From ProviderMeta
     //  private final String mDatabaseName = "ownCloud";
     public static String getDBName() {
-        return getAppContext().getResources().getString(R.string.db_name);
+        return string(R.string.db_name);
     }
 
     /**
      * name of data_folder, e.g., "owncloud"
      */
     public static String getDataFolder() {
-        return getAppContext().getResources().getString(R.string.data_folder);
+        return string(R.string.data_folder);
     }
 
     public static void showOnlyFilesOnDevice(boolean state) {
         mOnlyOnDevice = state;
     }
 
+    public static void showOnlyPersonalFiles(boolean state) {
+        mOnlyPersonalFiles = state;
+    }
 
     public static boolean isOnlyOnDevice() {
         return mOnlyOnDevice;
+    }
+
+    public static boolean isOnlyPersonFiles() {
+        return mOnlyPersonalFiles;
     }
 
     public static String getUserAgent() {
@@ -676,7 +781,8 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
 
     // user agent
     private static String getUserAgent(@StringRes int agent) {
-        String appString = getAppContext().getResources().getString(agent);
+        String appString = string(agent);
+        String brandedName = string(R.string.name_for_branded_user_agent);
         String packageName = getAppContext().getPackageName();
         String version = "";
 
@@ -689,7 +795,7 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
             Log_OC.e(TAG, "Trying to get packageName", e.getCause());
         }
 
-        return String.format(appString, version);
+        return String.format(appString, version, brandedName);
     }
 
     private static void updateToAutoUpload() {
@@ -730,7 +836,7 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
     }
 
     private static void splitOutAutoUploadEntries(Clock clock,
-                                                  ThemeSnackbarUtils themeSnackbarUtils) {
+                                                  final ViewThemeUtils viewThemeUtils) {
         Context context = getAppContext();
         AppPreferences preferences = AppPreferencesImpl.fromContext(context);
         if (!preferences.isAutoUploadSplitEntriesEnabled()) {
@@ -745,12 +851,12 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
                                                                                       1,
                                                                                       null,
                                                                                       true,
-                                                                                      themeSnackbarUtils);
+                                                                                      viewThemeUtils);
             final List<MediaFolder> videoMediaFolders = MediaProvider.getVideoFolders(contentResolver,
                                                                                       1,
                                                                                       null,
                                                                                       true,
-                                                                                      themeSnackbarUtils);
+                                                                                      viewThemeUtils);
 
             ArrayList<Long> idsToDelete = new ArrayList<>();
             List<SyncedFolder> syncedFolders = syncedFolderProvider.getSyncedFolders();
@@ -762,25 +868,34 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
                     + syncedFolder.getId() + " - " + syncedFolder.getLocalPath());
 
                 for (MediaFolder imageMediaFolder : imageMediaFolders) {
-                    if (imageMediaFolder.absolutePath.equals(syncedFolder.getLocalPath())) {
-                        newSyncedFolder = (SyncedFolder) syncedFolder.clone();
-                        newSyncedFolder.setType(MediaFolderType.IMAGE);
-                        primaryKey = syncedFolderProvider.storeSyncedFolder(newSyncedFolder);
-                        Log_OC.i(TAG, "Migrated image synced_folders record: "
-                            + primaryKey + " - " + newSyncedFolder.getLocalPath());
-                        break;
+                    String absolutePathOfImageFolder = imageMediaFolder.absolutePath;
+
+                    if (absolutePathOfImageFolder != null) {
+                        if (absolutePathOfImageFolder.equals(syncedFolder.getLocalPath())) {
+                            newSyncedFolder = (SyncedFolder) syncedFolder.clone();
+                            newSyncedFolder.setType(MediaFolderType.IMAGE);
+                            primaryKey = syncedFolderProvider.storeSyncedFolder(newSyncedFolder);
+                            Log_OC.i(TAG, "Migrated image synced_folders record: "
+                                + primaryKey + " - " + newSyncedFolder.getLocalPath());
+                            break;
+                        }
                     }
                 }
 
                 for (MediaFolder videoMediaFolder : videoMediaFolders) {
-                    if (videoMediaFolder.absolutePath.equals(syncedFolder.getLocalPath())) {
-                        newSyncedFolder = (SyncedFolder) syncedFolder.clone();
-                        newSyncedFolder.setType(MediaFolderType.VIDEO);
-                        primaryKey = syncedFolderProvider.storeSyncedFolder(newSyncedFolder);
-                        Log_OC.i(TAG, "Migrated video synced_folders record: "
-                            + primaryKey + " - " + newSyncedFolder.getLocalPath());
-                        break;
+                    String absolutePathOfVideoFolder = videoMediaFolder.absolutePath;
+
+                    if (absolutePathOfVideoFolder != null) {
+                        if (absolutePathOfVideoFolder.equals(syncedFolder.getLocalPath())) {
+                            newSyncedFolder = (SyncedFolder) syncedFolder.clone();
+                            newSyncedFolder.setType(MediaFolderType.VIDEO);
+                            primaryKey = syncedFolderProvider.storeSyncedFolder(newSyncedFolder);
+                            Log_OC.i(TAG, "Migrated video synced_folders record: "
+                                + primaryKey + " - " + newSyncedFolder.getLocalPath());
+                            break;
+                        }
                     }
+
                 }
             }
 
@@ -806,19 +921,22 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
 
             List<SyncedFolder> syncedFolderList = syncedFolderProvider.getSyncedFolders();
             Map<Pair<String, String>, Long> syncedFolders = new HashMap<>();
-            ArrayList<Long> ids = new ArrayList<>();
             for (SyncedFolder syncedFolder : syncedFolderList) {
                 Pair<String, String> checkPair = new Pair<>(syncedFolder.getAccount(), syncedFolder.getLocalPath());
                 if (syncedFolders.containsKey(checkPair)) {
-                    if (syncedFolder.getId() > syncedFolders.get(checkPair)) {
-                        syncedFolders.put(checkPair, syncedFolder.getId());
+                    Long folderId = syncedFolders.get(checkPair);
+
+                    if (folderId != null) {
+                        if (syncedFolder.getId() > folderId) {
+                            syncedFolders.put(checkPair, syncedFolder.getId());
+                        }
                     }
                 } else {
                     syncedFolders.put(checkPair, syncedFolder.getId());
                 }
             }
 
-            ids.addAll(syncedFolders.values());
+            ArrayList<Long> ids = new ArrayList<>(syncedFolders.values());
 
             if (ids.size() > 0) {
                 int deletedCount = syncedFolderProvider.deleteSyncedFoldersNotInList(ids);
@@ -836,18 +954,11 @@ public class MainApp extends MultiDexApplication implements HasAndroidInjector {
         return dispatchingAndroidInjector;
     }
 
-
     public static void setAppTheme(DarkMode mode) {
         switch (mode) {
-            case LIGHT:
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
-                break;
-            case DARK:
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-                break;
-            case SYSTEM:
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
-                break;
+            case LIGHT -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+            case DARK -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+            case SYSTEM -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
         }
     }
 }

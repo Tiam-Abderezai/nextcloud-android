@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client.jobs
 
@@ -24,29 +11,28 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.res.Resources
 import android.os.Build
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.work.WorkerParameters
 import com.nextcloud.client.account.UserAccountManager
 import com.nextcloud.client.core.Clock
 import com.nextcloud.client.device.DeviceInfo
 import com.nextcloud.client.device.PowerManagementService
+import com.nextcloud.client.documentscan.GeneratePDFUseCase
 import com.nextcloud.client.integrations.deck.DeckApi
 import com.nextcloud.client.logger.Logger
 import com.nextcloud.client.network.ConnectivityService
 import com.nextcloud.client.preferences.AppPreferences
 import com.owncloud.android.datamodel.ArbitraryDataProvider
+import com.owncloud.android.datamodel.SyncedFolderProvider
 import com.owncloud.android.datamodel.UploadsStorageManager
-import com.owncloud.android.utils.theme.ThemeButtonUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeSnackbarUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import org.greenrobot.eventbus.EventBus
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.whenever
-import javax.inject.Provider
 
 class BackgroundJobFactoryTest {
 
@@ -102,13 +88,16 @@ class BackgroundJobFactoryTest {
     private lateinit var deckApi: DeckApi
 
     @Mock
-    private lateinit var themeColorUtils: ThemeColorUtils
+    private lateinit var viewThemeUtils: ViewThemeUtils
 
     @Mock
-    private lateinit var themeSnackbarUtils: ThemeSnackbarUtils
+    private lateinit var localBroadcastManager: LocalBroadcastManager
 
     @Mock
-    private lateinit var themeButtonUtils: ThemeButtonUtils
+    private lateinit var generatePDFUseCase: GeneratePDFUseCase
+
+    @Mock
+    private lateinit var syncedFolderProvider: SyncedFolderProvider
 
     private lateinit var factory: BackgroundJobFactory
 
@@ -121,7 +110,7 @@ class BackgroundJobFactoryTest {
             contentResolver,
             clock,
             powerManagementService,
-            Provider { backgroundJobManager },
+            { backgroundJobManager },
             deviceInfo,
             accountManager,
             resources,
@@ -131,9 +120,10 @@ class BackgroundJobFactoryTest {
             notificationManager,
             eventBus,
             deckApi,
-            themeColorUtils,
-            themeSnackbarUtils,
-            themeButtonUtils
+            { viewThemeUtils },
+            { localBroadcastManager },
+            generatePDFUseCase,
+            syncedFolderProvider
         )
     }
 
@@ -151,21 +141,5 @@ class BackgroundJobFactoryTest {
         // THEN
         //      factory creates a worker compatible with API level
         assertNotNull(worker)
-    }
-
-    @Test
-    fun content_observer_worker_is_not_created_below_api_level_24() {
-        // GIVEN
-        //      api level is < 24
-        //      content URI trigger is not supported
-        whenever(deviceInfo.apiLevel).thenReturn(Build.VERSION_CODES.M)
-
-        // WHEN
-        //      factory is called to create content observer worker
-        val worker = factory.createWorker(context, ContentObserverWork::class.java.name, params)
-
-        // THEN
-        //      factory does not create a worker incompatible with API level
-        assertNull(worker)
     }
 }

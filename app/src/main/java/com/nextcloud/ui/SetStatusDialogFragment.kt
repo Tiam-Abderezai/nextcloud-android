@@ -4,18 +4,7 @@
  * @author Tobias Kaminsky
  * Copyright (C) 2020 Nextcloud GmbH
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.nextcloud.ui
@@ -24,6 +13,7 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -31,10 +21,13 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.AdapterView.OnItemSelectedListener
 import android.widget.ArrayAdapter
+import android.widget.ImageView
+import android.widget.TextView
 import androidx.annotation.VisibleForTesting
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.nextcloud.client.account.User
@@ -42,6 +35,7 @@ import com.nextcloud.client.account.UserAccountManager
 import com.nextcloud.client.core.AsyncRunner
 import com.nextcloud.client.di.Injectable
 import com.nextcloud.client.network.ClientFactory
+import com.nextcloud.utils.extensions.getParcelableArgument
 import com.owncloud.android.R
 import com.owncloud.android.databinding.DialogSetStatusBinding
 import com.owncloud.android.datamodel.ArbitraryDataProvider
@@ -53,9 +47,7 @@ import com.owncloud.android.ui.activity.BaseActivity
 import com.owncloud.android.ui.adapter.PredefinedStatusClickListener
 import com.owncloud.android.ui.adapter.PredefinedStatusListAdapter
 import com.owncloud.android.utils.DisplayUtils
-import com.owncloud.android.utils.theme.ThemeButtonUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeTextInputUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import com.vanniktech.emoji.EmojiManager
 import com.vanniktech.emoji.EmojiPopup
 import com.vanniktech.emoji.google.GoogleEmojiProvider
@@ -112,19 +104,13 @@ class SetStatusDialogFragment :
     lateinit var clientFactory: ClientFactory
 
     @Inject
-    lateinit var themeColorUtils: ThemeColorUtils
-
-    @Inject
-    lateinit var themeButtonUtils: ThemeButtonUtils
-
-    @Inject
-    lateinit var themeTextInputUtils: ThemeTextInputUtils
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
-            currentUser = it.getParcelable(ARG_CURRENT_USER_PARAM)
-            currentStatus = it.getParcelable(ARG_CURRENT_STATUS_PARAM)
+            currentUser = it.getParcelableArgument(ARG_CURRENT_USER_PARAM, User::class.java)
+            currentStatus = it.getParcelableArgument(ARG_CURRENT_STATUS_PARAM, Status::class.java)
 
             val json = arbitraryDataProvider.getValue(currentUser, ArbitraryDataProvider.PREDEFINED_STATUS)
 
@@ -141,9 +127,11 @@ class SetStatusDialogFragment :
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         binding = DialogSetStatusBinding.inflate(layoutInflater)
 
-        return AlertDialog.Builder(requireContext())
-            .setView(binding.root)
-            .create()
+        val builder = MaterialAlertDialogBuilder(requireContext()).setView(binding.root)
+
+        viewThemeUtils.dialog.colorMaterialAlertDialogBackground(binding.statusView.context, builder)
+
+        return builder.create()
     }
 
     @SuppressLint("DefaultLocale")
@@ -167,22 +155,24 @@ class SetStatusDialogFragment :
         binding.awayStatus.setOnClickListener { setStatus(StatusType.AWAY) }
         binding.invisibleStatus.setOnClickListener { setStatus(StatusType.INVISIBLE) }
 
+        viewThemeUtils.files.themeStatusCardView(binding.onlineStatus)
+        viewThemeUtils.files.themeStatusCardView(binding.dndStatus)
+        viewThemeUtils.files.themeStatusCardView(binding.awayStatus)
+        viewThemeUtils.files.themeStatusCardView(binding.invisibleStatus)
+
         binding.clearStatus.setOnClickListener { clearStatus() }
         binding.setStatus.setOnClickListener { setStatusMessage() }
         binding.emoji.setOnClickListener { popup.show() }
 
-        popup = EmojiPopup(
-            view, binding.emoji,
-            onEmojiClickListener = {
-                popup.dismiss()
-                binding.emoji.clearFocus()
-                val imm: InputMethodManager = context?.getSystemService(Context.INPUT_METHOD_SERVICE) as
-                    InputMethodManager
-                imm.hideSoftInputFromWindow(binding.emoji.windowToken, 0)
-            }
-        )
-        binding.emoji.installDisableKeyboardInput(popup)
+        popup = EmojiPopup(view, binding.emoji, onEmojiClickListener = { _ ->
+            popup.dismiss()
+            binding.emoji.clearFocus()
+            val imm: InputMethodManager = context?.getSystemService(Context.INPUT_METHOD_SERVICE) as
+                InputMethodManager
+            imm.hideSoftInputFromWindow(binding.emoji.windowToken, 0)
+        })
         binding.emoji.installForceSingleEmoji()
+        binding.emoji.installDisableKeyboardInput(popup)
 
         val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_spinner_item)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -206,14 +196,11 @@ class SetStatusDialogFragment :
             }
         }
 
-        binding.clearStatus.setTextColor(themeColorUtils.primaryColor(context, true))
-        themeButtonUtils.colorPrimaryButton(binding.setStatus, context, themeColorUtils)
-        themeTextInputUtils.colorTextInput(
-            binding.customStatusInputContainer,
-            binding.customStatusInput,
-            themeColorUtils.primaryColor(activity),
-            themeColorUtils.primaryAccentColor(activity)
-        )
+        viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(binding.clearStatus)
+        viewThemeUtils.material.colorMaterialButtonPrimaryTonal(binding.setStatus)
+        viewThemeUtils.material.colorTextInputLayout(binding.customStatusInputContainer)
+
+        viewThemeUtils.platform.themeDialog(binding.root)
     }
 
     private fun updateCurrentStatusViews(it: Status) {
@@ -320,34 +307,37 @@ class SetStatusDialogFragment :
     }
 
     private fun visualizeStatus(statusType: StatusType) {
-        when (statusType) {
-            StatusType.ONLINE -> {
-                clearTopStatus()
-                binding.onlineStatus.setBackgroundColor(themeColorUtils.primaryColor(context))
+        clearTopStatus()
+        val views: Triple<MaterialCardView, TextView, ImageView> = when (statusType) {
+            StatusType.ONLINE -> Triple(binding.onlineStatus, binding.onlineHeadline, binding.onlineIcon)
+            StatusType.AWAY -> Triple(binding.awayStatus, binding.awayHeadline, binding.awayIcon)
+            StatusType.DND -> Triple(binding.dndStatus, binding.dndHeadline, binding.dndIcon)
+            StatusType.INVISIBLE -> Triple(binding.invisibleStatus, binding.invisibleHeadline, binding.invisibleIcon)
+            else -> {
+                Log.d(TAG, "unknown status")
+                return
             }
-            StatusType.AWAY -> {
-                clearTopStatus()
-                binding.awayStatus.setBackgroundColor(themeColorUtils.primaryColor(context))
-            }
-            StatusType.DND -> {
-                clearTopStatus()
-                binding.dndStatus.setBackgroundColor(themeColorUtils.primaryColor(context))
-            }
-            StatusType.INVISIBLE -> {
-                clearTopStatus()
-                binding.invisibleStatus.setBackgroundColor(themeColorUtils.primaryColor(context))
-            }
-            else -> clearTopStatus()
         }
+        views.first.isChecked = true
+        viewThemeUtils.platform.colorOnSecondaryContainerTextViewElement(views.second)
     }
 
     private fun clearTopStatus() {
         context?.let {
-            val grey = it.resources.getColor(R.color.grey_200)
-            binding.onlineStatus.setBackgroundColor(grey)
-            binding.awayStatus.setBackgroundColor(grey)
-            binding.dndStatus.setBackgroundColor(grey)
-            binding.invisibleStatus.setBackgroundColor(grey)
+            binding.onlineHeadline.setTextColor(resources.getColor(R.color.high_emphasis_text))
+            binding.awayHeadline.setTextColor(resources.getColor(R.color.high_emphasis_text))
+            binding.dndHeadline.setTextColor(resources.getColor(R.color.high_emphasis_text))
+            binding.invisibleHeadline.setTextColor(resources.getColor(R.color.high_emphasis_text))
+
+            binding.onlineIcon.imageTintList = null
+            binding.awayIcon.imageTintList = null
+            binding.dndIcon.imageTintList = null
+            binding.invisibleIcon.imageTintList = null
+
+            binding.onlineStatus.isChecked = false
+            binding.awayStatus.isChecked = false
+            binding.dndStatus.isChecked = false
+            binding.invisibleStatus.isChecked = false
         }
     }
 
@@ -386,6 +376,8 @@ class SetStatusDialogFragment :
      * Fragment creator
      */
     companion object {
+        private val TAG = SetStatusDialogFragment::class.simpleName
+
         @JvmStatic
         fun newInstance(user: User, status: Status?): SetStatusDialogFragment {
             val args = Bundle()
@@ -393,7 +385,6 @@ class SetStatusDialogFragment :
             args.putParcelable(ARG_CURRENT_STATUS_PARAM, status)
             val dialogFragment = SetStatusDialogFragment()
             dialogFragment.arguments = args
-            dialogFragment.setStyle(STYLE_NORMAL, R.style.Theme_ownCloud_Dialog)
             return dialogFragment
         }
     }

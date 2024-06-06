@@ -1,10 +1,15 @@
 #!/bin/bash
 # Pre-commit hook: don't allow commits if detekt or ktlint fail. Skip with "git commit --no-verify".
+
+# SPDX-FileCopyrightText: 2021-2024 Nextcloud GmbH and Nextcloud contributors
+# SPDX-FileCopyrightText: 2021 Álvaro Brey Vilas <alvaro.brey@nextcloud.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 echo "Running pre-commit checks..."
 
-if ! ./gradlew --daemon ktlintCheck &>/dev/null; then
-    echo >&2 "ktlint failed! Run ./gradlew ktlintCheck for details"
-    echo >&2 "Hint: fix most lint errors with ./gradlew ktlintFormat"
+if ! ./gradlew --daemon spotlessKotlinCheck &>/dev/null; then
+    echo >&2 "ktlint failed! Run ./gradlew spotlessKotlinCheck for details"
+    echo >&2 "Hint: fix most lint errors with ./gradlew spotlessKotlinApply"
     exit 1
 fi
 

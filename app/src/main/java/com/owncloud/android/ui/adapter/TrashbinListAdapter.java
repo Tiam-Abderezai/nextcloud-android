@@ -1,22 +1,9 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.adapter;
 
@@ -42,8 +29,7 @@ import com.owncloud.android.ui.interfaces.TrashbinActivityInterface;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.FileSortOrder;
 import com.owncloud.android.utils.MimeTypeUtil;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,8 +56,7 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
     private final FileDataStorageManager storageManager;
     private final AppPreferences preferences;
     private final List<ThumbnailsCacheManager.ThumbnailGenerationTask> asyncTasks = new ArrayList<>();
-    private final ThemeColorUtils themeColorUtils;
-    private final ThemeDrawableUtils themeDrawableUtils;
+    private final ViewThemeUtils viewThemeUtils;
 
     public TrashbinListAdapter(
         TrashbinActivityInterface trashbinActivityInterface,
@@ -79,8 +64,7 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         AppPreferences preferences,
         Context context,
         User user,
-        ThemeColorUtils themeColorUtils,
-        ThemeDrawableUtils themeDrawableUtils
+        ViewThemeUtils viewThemeUtils
                               ) {
         this.files = new ArrayList<>();
         this.trashbinActivityInterface = trashbinActivityInterface;
@@ -88,21 +72,18 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         this.storageManager = storageManager;
         this.preferences = preferences;
         this.context = context;
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
-    public void setTrashbinFiles(List<Object> trashbinFiles, boolean clear) {
+    public void setTrashbinFiles(List<TrashbinFile> trashbinFiles, boolean clear) {
         if (clear) {
             files.clear();
         }
 
-        for (Object file : trashbinFiles) {
-            files.add((TrashbinFile) file);
-        }
+        files.addAll(trashbinFiles);
 
         files = preferences.getSortOrderByType(FileSortOrder.Type.trashBinView,
-            FileSortOrder.sort_new_to_old).sortTrashbinFiles(files);
+                                               FileSortOrder.sort_new_to_old).sortTrashbinFiles(files);
 
         notifyDataSetChanged();
     }
@@ -225,9 +206,7 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
 
     private void setThumbnail(TrashbinFile file, ImageView thumbnailView) {
         if (file.isFolder()) {
-            thumbnailView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context,
-                                                                             themeColorUtils,
-                                                                             themeDrawableUtils));
+            thumbnailView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context, viewThemeUtils));
         } else {
             if ((MimeTypeUtil.isImage(file) || MimeTypeUtil.isVideo(file)) && file.getRemoteId() != null) {
                 // Thumbnail in cache?
@@ -237,20 +216,25 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
 
                 if (thumbnail != null) {
                     if (MimeTypeUtil.isVideo(file)) {
-                        Bitmap withOverlay = ThumbnailsCacheManager.addVideoOverlay(thumbnail);
+                        Bitmap withOverlay = ThumbnailsCacheManager.addVideoOverlay(thumbnail, context);
                         thumbnailView.setImageBitmap(withOverlay);
                     } else {
                         thumbnailView.setImageBitmap(thumbnail);
                     }
                 } else {
+                    thumbnailView.setImageDrawable(MimeTypeUtil.getFileTypeIcon(file.getMimeType(),
+                                                                                file.getFileName(),
+                                                                                context,
+                                                                                viewThemeUtils));
+
                     // generate new thumbnail
                     if (ThumbnailsCacheManager.cancelPotentialThumbnailWork(file, thumbnailView)) {
                         try {
                             final ThumbnailsCacheManager.ThumbnailGenerationTask task =
-                                    new ThumbnailsCacheManager.ThumbnailGenerationTask(thumbnailView,
-                                                                                       storageManager,
-                                                                                       user,
-                                                                                       asyncTasks);
+                                new ThumbnailsCacheManager.ThumbnailGenerationTask(thumbnailView,
+                                                                                   storageManager,
+                                                                                   user,
+                                                                                   asyncTasks);
 
                             final ThumbnailsCacheManager.AsyncThumbnailDrawable asyncDrawable =
                                     new ThumbnailsCacheManager.AsyncThumbnailDrawable(context.getResources(),
@@ -271,10 +255,8 @@ public class TrashbinListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
             } else {
                 thumbnailView.setImageDrawable(MimeTypeUtil.getFileTypeIcon(file.getMimeType(),
                                                                             file.getFileName(),
-                                                                            user,
                                                                             context,
-                                                                            themeColorUtils,
-                                                                            themeDrawableUtils));
+                                                                            viewThemeUtils));
             }
         }
     }

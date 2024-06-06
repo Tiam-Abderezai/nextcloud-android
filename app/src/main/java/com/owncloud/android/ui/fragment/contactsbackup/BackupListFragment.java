@@ -1,25 +1,11 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2017 Tobias Kaminsky
- * Copyright (C) 2017 Nextcloud GmbH.
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- * <p>
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- * <p>
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- * <p>
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2017 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.fragment.contactsbackup;
 
 import android.Manifest;
@@ -38,13 +24,14 @@ import com.google.android.material.snackbar.Snackbar;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.di.Injectable;
-import com.nextcloud.client.files.downloader.DownloadRequest;
-import com.nextcloud.client.files.downloader.Request;
-import com.nextcloud.client.files.downloader.Transfer;
-import com.nextcloud.client.files.downloader.TransferManagerConnection;
-import com.nextcloud.client.files.downloader.TransferState;
+import com.nextcloud.client.files.DownloadRequest;
+import com.nextcloud.client.files.Request;
 import com.nextcloud.client.jobs.BackgroundJobManager;
+import com.nextcloud.client.jobs.transfer.Transfer;
+import com.nextcloud.client.jobs.transfer.TransferManagerConnection;
+import com.nextcloud.client.jobs.transfer.TransferState;
 import com.nextcloud.client.network.ClientFactory;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.BackuplistFragmentBinding;
 import com.owncloud.android.datamodel.OCFile;
@@ -54,8 +41,7 @@ import com.owncloud.android.ui.events.VCardToggleEvent;
 import com.owncloud.android.ui.fragment.FileFragment;
 import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.PermissionUtil;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeToolbarUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -94,8 +80,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
     @Inject UserAccountManager accountManager;
     @Inject ClientFactory clientFactory;
     @Inject BackgroundJobManager backgroundJobManager;
-    @Inject ThemeColorUtils themeColorUtils;
-    @Inject ThemeToolbarUtils themeToolbarUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
     private TransferManagerConnection fileDownloader;
     private LoadContactsTask loadContactsTask = null;
     private ContactsAccount selectedAccount;
@@ -142,9 +127,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
         if (contactsPreferenceActivity != null) {
             ActionBar actionBar = contactsPreferenceActivity.getSupportActionBar();
             if (actionBar != null) {
-                themeToolbarUtils.setColoredTitle(actionBar,
-                                                  R.string.actionbar_calendar_contacts_restore,
-                                                  getContext());
+                viewThemeUtils.files.themeActionBar(requireContext(), actionBar, R.string.actionbar_calendar_contacts_restore);
                 actionBar.setDisplayHomeAsUpEnabled(true);
             }
             contactsPreferenceActivity.setDrawerIndicatorEnabled(false);
@@ -157,7 +140,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
                                                 new HashMap<>(),
                                                 this,
                                                 requireContext(),
-                                                themeColorUtils);
+                                                viewThemeUtils);
         } else {
             HashMap<String, Integer> checkedCalendarItems = new HashMap<>();
             String[] checkedCalendarItemsArray = savedInstanceState.getStringArray(CHECKED_CALENDAR_ITEMS_ARRAY_KEY);
@@ -187,7 +170,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
                                                 checkedCalendarItems,
                                                 this,
                                                 requireContext(),
-                                                themeColorUtils);
+                                                viewThemeUtils);
         }
 
         binding.list.setAdapter(listAdapter);
@@ -198,8 +181,8 @@ public class BackupListFragment extends FileFragment implements Injectable {
             return view;
         }
 
-        if (arguments.getParcelable(FILE_NAME) != null) {
-            ocFiles.add(arguments.getParcelable(FILE_NAME));
+        if (BundleExtensionsKt.getParcelableArgument(arguments, FILE_NAME, OCFile.class) != null) {
+            ocFiles.add(BundleExtensionsKt.getParcelableArgument(arguments, FILE_NAME, OCFile.class));
         } else if (arguments.getParcelableArray(FILE_NAMES) != null) {
             for (Parcelable file : arguments.getParcelableArray(FILE_NAMES)) {
                 ocFiles.add((OCFile) file);
@@ -208,7 +191,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
             return view;
         }
 
-        User user = getArguments().getParcelable(USER);
+        User user = BundleExtensionsKt.getParcelableArgument(getArguments(), USER, User.class);
         fileDownloader = new TransferManagerConnection(getActivity(), user);
         fileDownloader.registerTransferListener(this::onDownloadUpdate);
         fileDownloader.bind();
@@ -252,7 +235,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
             closeFragment();
         });
 
-        binding.restoreSelected.setTextColor(themeColorUtils.primaryAccentColor(getContext()));
+        viewThemeUtils.material.colorMaterialButtonPrimaryBorderless(binding.restoreSelected);
 
         return view;
     }
@@ -274,7 +257,7 @@ public class BackupListFragment extends FileFragment implements Injectable {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onMessageEvent(VCardToggleEvent event) {
-        if (event.showRestoreButton) {
+        if (event.getShowRestoreButton()) {
             binding.contactlistRestoreSelectedContainer.setVisibility(View.VISIBLE);
         } else {
             binding.contactlistRestoreSelectedContainer.setVisibility(View.GONE);

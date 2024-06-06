@@ -1,28 +1,17 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client.di
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.nextcloud.client.documentscan.DocumentScanViewModel
 import com.nextcloud.client.etm.EtmViewModel
 import com.nextcloud.client.logger.ui.LogsViewModel
+import com.nextcloud.ui.fileactions.FileActionsViewModel
 import com.owncloud.android.ui.preview.pdf.PreviewPdfViewModel
 import com.owncloud.android.ui.unifiedsearch.UnifiedSearchViewModel
 import dagger.Binds
@@ -50,6 +39,16 @@ abstract class ViewModelModule {
     @IntoMap
     @ViewModelKey(PreviewPdfViewModel::class)
     abstract fun previewPDFViewModel(vm: PreviewPdfViewModel): ViewModel
+
+    @Binds
+    @IntoMap
+    @ViewModelKey(FileActionsViewModel::class)
+    abstract fun fileActionsViewModel(vm: FileActionsViewModel): ViewModel
+
+    @Binds
+    @IntoMap
+    @ViewModelKey(DocumentScanViewModel::class)
+    abstract fun documentScanViewModel(vm: DocumentScanViewModel): ViewModel
 
     @Binds
     abstract fun bindViewModelFactory(factory: ViewModelFactory): ViewModelProvider.Factory

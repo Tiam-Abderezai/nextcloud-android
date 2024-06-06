@@ -5,18 +5,7 @@
  * Copyright (C) 2021 TSI-mc
  * Copyright (C) 2021 Nextcloud GmbH
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.fragment;
@@ -34,6 +23,7 @@ import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.ui.activity.FileActivity;
 import com.owncloud.android.ui.adapter.QuickSharingPermissionsAdapter;
 import com.owncloud.android.ui.fragment.util.SharingMenuHelper;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,14 +43,17 @@ public class QuickSharingPermissionsBottomSheetDialog extends BottomSheetDialog 
     private final QuickPermissionSharingBottomSheetActions actions;
     private final FileActivity fileActivity;
     private final OCShare ocShare;
+    private final ViewThemeUtils viewThemeUtils;
 
     public QuickSharingPermissionsBottomSheetDialog(FileActivity fileActivity,
                                                     QuickPermissionSharingBottomSheetActions actions,
-                                                    OCShare ocShare) {
+                                                    OCShare ocShare,
+                                                    ViewThemeUtils viewThemeUtils) {
         super(fileActivity);
         this.actions = actions;
         this.ocShare = ocShare;
         this.fileActivity = fileActivity;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     @Override
@@ -73,6 +66,8 @@ public class QuickSharingPermissionsBottomSheetDialog extends BottomSheetDialog 
             getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
 
+        viewThemeUtils.platform.themeDialog(binding.getRoot());
+
         setUpRecyclerView();
         setOnShowListener(d ->
                               BottomSheetBehavior.from((View) binding.getRoot().getParent())
@@ -82,17 +77,21 @@ public class QuickSharingPermissionsBottomSheetDialog extends BottomSheetDialog 
 
     private void setUpRecyclerView() {
         List<QuickPermissionModel> quickPermissionModelList = getQuickPermissionList();
-        QuickSharingPermissionsAdapter adapter = new QuickSharingPermissionsAdapter(quickPermissionModelList, new QuickSharingPermissionsAdapter.QuickSharingPermissionViewHolder.OnPermissionChangeListener() {
-            @Override
-            public void onPermissionChanged(int position) {
-                handlePermissionChanged(quickPermissionModelList, position);
-            }
+        QuickSharingPermissionsAdapter adapter = new QuickSharingPermissionsAdapter(
+            quickPermissionModelList,
+            new QuickSharingPermissionsAdapter.QuickSharingPermissionViewHolder.OnPermissionChangeListener() {
+                @Override
+                public void onPermissionChanged(int position) {
+                    handlePermissionChanged(quickPermissionModelList, position);
+                }
 
-            @Override
-            public void onDismissSheet() {
-                dismiss();
-            }
-        });
+                @Override
+                public void onDismissSheet() {
+                    dismiss();
+                }
+            },
+            viewThemeUtils
+        );
         LinearLayoutManager linearLayoutManager = new LinearLayoutManager(fileActivity);
         binding.rvQuickSharePermissions.setLayoutManager(linearLayoutManager);
         binding.rvQuickSharePermissions.setAdapter(adapter);

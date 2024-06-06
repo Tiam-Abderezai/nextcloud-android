@@ -1,27 +1,17 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author Bartek Przybylski
- *   @author David A. Velasco
- *   @author Chris Narkiewicz
- *
- *   Copyright (C) 2011  Bartek Przybylski
- *   Copyright (C) 2016 ownCloud Inc.
- *   Copyright (C) 2016 Nextcloud
- *   Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2022-2023 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2017-2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2015-2017 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 Jose Antonio Barros Ramos <jabarros@solidgear.es>
+ * SPDX-FileCopyrightText: 2013 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2011-2015 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.ui.activity;
 
@@ -31,11 +21,11 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Configuration;
-import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.ListPreference;
 import android.preference.Preference;
+import android.preference.PreferenceActivity;
 import android.preference.PreferenceCategory;
 import android.preference.PreferenceManager;
 import android.preference.PreferenceScreen;
@@ -54,6 +44,7 @@ import com.nextcloud.client.di.Injectable;
 import com.nextcloud.client.etm.EtmActivity;
 import com.nextcloud.client.logger.ui.LogsActivity;
 import com.nextcloud.client.network.ClientFactory;
+import com.nextcloud.client.network.ConnectivityService;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.nextcloud.client.preferences.AppPreferencesImpl;
 import com.nextcloud.client.preferences.DarkMode;
@@ -62,6 +53,7 @@ import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
 import com.owncloud.android.authentication.AuthenticatorActivity;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.ExternalLinksProvider;
 import com.owncloud.android.datastorage.DataStorageProvider;
 import com.owncloud.android.datastorage.StoragePoint;
@@ -71,15 +63,15 @@ import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.providers.DocumentsStorageProvider;
 import com.owncloud.android.ui.ThemeableSwitchPreference;
 import com.owncloud.android.ui.asynctasks.LoadingVersionNumberTask;
+import com.owncloud.android.ui.dialog.SetupEncryptionDialogFragment;
+import com.owncloud.android.ui.helpers.FileOperationsHelper;
+import com.owncloud.android.utils.ClipboardUtil;
 import com.owncloud.android.utils.DeviceCredentialUtils;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.EncryptionUtils;
 import com.owncloud.android.utils.MimeTypeUtil;
-import com.owncloud.android.utils.theme.ThemeButtonUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeTextUtils;
-import com.owncloud.android.utils.theme.ThemeToolbarUtils;
-import com.owncloud.android.utils.theme.ThemeUtils;
+import com.owncloud.android.utils.theme.CapabilityUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,19 +84,21 @@ import androidx.annotation.VisibleForTesting;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
 
 /**
  * An Activity that allows the user to change the application's settings.
- *
  * It proxies the necessary calls via {@link androidx.appcompat.app.AppCompatDelegate} to be used with AppCompat.
  */
-public class SettingsActivity extends ThemedPreferenceActivity
-    implements StorageMigration.StorageMigrationProgressListener, LoadingVersionNumberTask.VersionDevInterface,
+public class SettingsActivity extends PreferenceActivity
+    implements StorageMigration.StorageMigrationProgressListener,
+    LoadingVersionNumberTask.VersionDevInterface,
     Injectable {
 
     private static final String TAG = SettingsActivity.class.getSimpleName();
 
-    public static final String PREFERENCE_LOCK= "lock";
+    public static final String PREFERENCE_LOCK = "lock";
 
     public static final String LOCK_NONE = "none";
     public static final String LOCK_PASSCODE = "passcode";
@@ -119,6 +113,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
     private static final int ACTION_CONFIRM_DEVICE_CREDENTIALS = 7;
     private static final int ACTION_REQUEST_CODE_DAVDROID_SETUP = 10;
     private static final int ACTION_SHOW_MNEMONIC = 11;
+    private static final int ACTION_E2E = 12;
     private static final int TRUE_VALUE = 1;
 
     private static final String DAV_PATH = "/remote.php/dav";
@@ -129,6 +124,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
 
     private ListPreference lock;
     private ThemeableSwitchPreference showHiddenFiles;
+    private ThemeableSwitchPreference showEcosystemApps;
     private AppCompatDelegate delegate;
 
     private ListPreference prefStoragePath;
@@ -140,20 +136,14 @@ public class SettingsActivity extends ThemedPreferenceActivity
     @Inject AppPreferences preferences;
     @Inject UserAccountManager accountManager;
     @Inject ClientFactory clientFactory;
-    @Inject ThemeColorUtils themeColorUtils;
-    @Inject ThemeToolbarUtils themeToolbarUtils;
-    @Inject ThemeUtils themeUtils;
-    @Inject ThemeTextUtils themeTextUtils;
-    @Inject ThemeButtonUtils themeButtonUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
+    @Inject ConnectivityService connectivityService;
+
 
     @SuppressWarnings("deprecation")
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        if (themeUtils.themingEnabled(this)) {
-            setTheme(R.style.FallbackThemingTheme);
-        }
 
         getDelegate().installViewFactory();
         getDelegate().onCreate(savedInstanceState);
@@ -164,7 +154,6 @@ public class SettingsActivity extends ThemedPreferenceActivity
         // Register context menu for list of preferences.
         registerForContextMenu(getListView());
 
-        int accentColor = themeColorUtils.primaryAccentColor(this);
         String appVersion = getAppVersion();
         PreferenceScreen preferenceScreen = (PreferenceScreen) findPreference("preference_screen");
 
@@ -174,31 +163,33 @@ public class SettingsActivity extends ThemedPreferenceActivity
         setupBaseUri();
 
         // General
-        setupGeneralCategory(accentColor);
+        setupGeneralCategory();
 
         // Synced folders
-        setupAutoUploadCategory(accentColor, preferenceScreen);
+        setupAutoUploadCategory(preferenceScreen);
 
         // Details
-        setupDetailsCategory(accentColor, preferenceScreen);
+        setupDetailsCategory(preferenceScreen);
 
         // More
-        setupMoreCategory(accentColor);
+        setupMoreCategory();
 
         // About
-        setupAboutCategory(accentColor, appVersion);
+        setupAboutCategory(appVersion);
 
         // Dev
-        setupDevCategory(accentColor, preferenceScreen);
+        setupDevCategory(preferenceScreen);
+
+        // workaround for mismatched color when app dark mode and system dark mode don't agree
+        setListBackground();
     }
 
-    private void setupDevCategory(int accentColor, PreferenceScreen preferenceScreen) {
+    private void setupDevCategory(PreferenceScreen preferenceScreen) {
         // Dev category
         PreferenceCategory preferenceCategoryDev = (PreferenceCategory) findPreference("dev_category");
 
         if (getResources().getBoolean(R.bool.is_beta)) {
-            preferenceCategoryDev.setTitle(themeTextUtils.getColoredTitle(getString(R.string.prefs_category_dev),
-                                                                          accentColor));
+            viewThemeUtils.files.themePreferenceCategory(preferenceCategoryDev);
 
             /* Link to dev apks */
             Preference pDevLink = findPreference("dev_link");
@@ -235,10 +226,9 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
-    private void setupAboutCategory(int accentColor, String appVersion) {
-        PreferenceCategory preferenceCategoryAbout = (PreferenceCategory) findPreference("about");
-        preferenceCategoryAbout.setTitle(themeTextUtils.getColoredTitle(getString(R.string.prefs_category_about),
-                                                                        accentColor));
+    private void setupAboutCategory(String appVersion) {
+        final PreferenceCategory preferenceCategoryAbout = (PreferenceCategory) findPreference("about");
+        viewThemeUtils.files.themePreferenceCategory(preferenceCategoryAbout);
 
         /* About App */
         Preference pAboutApp = findPreference("about_app");
@@ -282,13 +272,13 @@ public class SettingsActivity extends ThemedPreferenceActivity
                         String mimeType = MimeTypeUtil.getBestMimeTypeByFilename(privacyUrl.getLastPathSegment());
 
                         Intent intent;
-                        if ("application/pdf".equals(mimeType)) {
+                        if (MimeTypeUtil.isPDF(mimeType)) {
                             intent = new Intent(Intent.ACTION_VIEW, privacyUrl);
                             DisplayUtils.startIntentIfAppAvailable(intent, this, R.string.no_pdf_app_available);
                         } else {
                             intent = new Intent(getApplicationContext(), ExternalSiteWebView.class);
                             intent.putExtra(ExternalSiteWebView.EXTRA_TITLE,
-                                    getResources().getString(R.string.privacy));
+                                            getResources().getString(R.string.privacy));
                             intent.putExtra(ExternalSiteWebView.EXTRA_URL, privacyUrl.toString());
                             intent.putExtra(ExternalSiteWebView.EXTRA_SHOW_SIDEBAR, false);
                             intent.putExtra(ExternalSiteWebView.EXTRA_MENU_ITEM_ID, -1);
@@ -321,10 +311,9 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
-    private void setupMoreCategory(int accentColor) {
-        PreferenceCategory preferenceCategoryMore = (PreferenceCategory) findPreference("more");
-        preferenceCategoryMore.setTitle(themeTextUtils.getColoredTitle(getString(R.string.prefs_category_more),
-                                                                       accentColor));
+    private void setupMoreCategory() {
+        final PreferenceCategory preferenceCategoryMore = (PreferenceCategory) findPreference("more");
+        viewThemeUtils.files.themePreferenceCategory(preferenceCategoryMore);
 
         setupAutoUploadPreference(preferenceCategoryMore);
 
@@ -332,7 +321,13 @@ public class SettingsActivity extends ThemedPreferenceActivity
 
         setupBackupPreference();
 
+        setupE2EPreference(preferenceCategoryMore);
+
+        setupE2EKeysExist(preferenceCategoryMore);
+
         setupE2EMnemonicPreference(preferenceCategoryMore);
+
+        removeE2E(preferenceCategoryMore);
 
         setupHelpPreference(preferenceCategoryMore);
 
@@ -354,9 +349,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
                     String imprintWeb = getString(R.string.url_imprint);
 
                     if (!imprintWeb.isEmpty()) {
-                        Uri uriUrl = Uri.parse(imprintWeb);
-                        Intent intent = new Intent(Intent.ACTION_VIEW, uriUrl);
-                        DisplayUtils.startIntentIfAppAvailable(intent, this, R.string.no_browser_available);
+                        DisplayUtils.startLinkIntent(this, imprintWeb);
                     }
                     //ImprintDialog.newInstance(true).show(preference.get, "IMPRINT_DIALOG");
                     return true;
@@ -386,7 +379,6 @@ public class SettingsActivity extends ThemedPreferenceActivity
     }
 
 
-
     private void setupRecommendPreference(PreferenceCategory preferenceCategoryMore) {
         boolean recommendEnabled = getResources().getBoolean(R.bool.recommend_enabled);
         Preference pRecommend = findPreference("recommend");
@@ -402,11 +394,11 @@ public class SettingsActivity extends ThemedPreferenceActivity
                     String downloadUrlGooglePlayStore = getString(R.string.url_app_download);
                     String downloadUrlFDroid = getString(R.string.fdroid_link);
                     String downloadUrls = String.format(getString(R.string.recommend_urls),
-                            downloadUrlGooglePlayStore, downloadUrlFDroid);
+                                                        downloadUrlGooglePlayStore, downloadUrlFDroid);
 
                     String recommendSubject = String.format(getString(R.string.recommend_subject), appName);
                     String recommendText = String.format(getString(R.string.recommend_text),
-                            appName, downloadUrls);
+                                                         appName, downloadUrls);
 
                     intent.putExtra(Intent.EXTRA_SUBJECT, recommendSubject);
                     intent.putExtra(Intent.EXTRA_TEXT, recommendText);
@@ -421,8 +413,55 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
+    private void setupE2EPreference(PreferenceCategory preferenceCategoryMore) {
+        Preference preference = findPreference("setup_e2e");
+
+        if (preference != null) {
+            if (FileOperationsHelper.isEndToEndEncryptionSetup(this, user) ||
+                CapabilityUtils.getCapability(this).getEndToEndEncryptionKeysExist().isTrue() ||
+                CapabilityUtils.getCapability(this).getEndToEndEncryptionKeysExist().isUnknown()
+            ) {
+                preferenceCategoryMore.removePreference(preference);
+            } else {
+                preference.setOnPreferenceClickListener(p -> {
+                    if (connectivityService.getConnectivity().isConnected()) {
+                        Intent i = new Intent(MainApp.getAppContext(), SetupEncryptionActivity.class);
+                        i.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                        i.putExtra("EXTRA_USER", user);
+                        startActivityForResult(i, ACTION_E2E);
+                    } else {
+                        DisplayUtils.showSnackMessage(this, R.string.e2e_offline);
+                    }
+
+                    return true;
+                });
+            }
+        }
+    }
+
+    private void setupE2EKeysExist(PreferenceCategory preferenceCategoryMore) {
+        Preference preference = findPreference("setup_e2e_keys_exist");
+
+        if (preference != null) {
+            if (!CapabilityUtils.getCapability(this).getEndToEndEncryptionKeysExist().isTrue() ||
+                (CapabilityUtils.getCapability(this).getEndToEndEncryptionKeysExist().isTrue() &&
+                    FileOperationsHelper.isEndToEndEncryptionSetup(this, user))) {
+                preferenceCategoryMore.removePreference(preference);
+            } else {
+                preference.setOnPreferenceClickListener(p -> {
+                    Intent i = new Intent(MainApp.getAppContext(), SetupEncryptionActivity.class);
+                    i.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    i.putExtra("EXTRA_USER", user);
+                    startActivityForResult(i, ACTION_E2E);
+
+                    return true;
+                });
+            }
+        }
+    }
+
     private void setupE2EMnemonicPreference(PreferenceCategory preferenceCategoryMore) {
-        String mnemonic = arbitraryDataProvider.getValue(user.getAccountName(), EncryptionUtils.MNEMONIC);
+        String mnemonic = arbitraryDataProvider.getValue(user.getAccountName(), EncryptionUtils.MNEMONIC).trim();
 
         Preference pMnemonic = findPreference("mnemonic");
         if (pMnemonic != null) {
@@ -446,18 +485,47 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
+    private void removeE2E(PreferenceCategory preferenceCategoryMore) {
+        Preference preference = findPreference("remove_e2e");
+
+        if (preference != null) {
+            if (!FileOperationsHelper.isEndToEndEncryptionSetup(this, user)) {
+                preferenceCategoryMore.removePreference(preference);
+            } else {
+                preference.setOnPreferenceClickListener(p -> {
+                    AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FallbackTheming_Dialog);
+                    AlertDialog alertDialog = builder.setTitle(R.string.prefs_e2e_mnemonic)
+                        .setMessage(getString(R.string.remove_e2e_message))
+                        .setCancelable(true)
+                        .setNegativeButton(R.string.common_cancel, ((dialog, i) -> dialog.dismiss()))
+                        .setPositiveButton(R.string.confirm_removal, (dialog, which) -> {
+                            EncryptionUtils.removeE2E(arbitraryDataProvider, user);
+                            preferenceCategoryMore.removePreference(preference);
+
+                            Preference pMnemonic = findPreference("mnemonic");
+                            if (pMnemonic != null) {
+                                preferenceCategoryMore.removePreference(pMnemonic);
+                            }
+
+                            dialog.dismiss();
+                        })
+                        .create();
+
+                    alertDialog.show();
+
+                    return true;
+                });
+            }
+        }
+    }
+
     private void setupHelpPreference(PreferenceCategory preferenceCategoryMore) {
         boolean helpEnabled = getResources().getBoolean(R.bool.help_enabled);
         Preference pHelp = findPreference("help");
         if (pHelp != null) {
             if (helpEnabled) {
                 pHelp.setOnPreferenceClickListener(preference -> {
-                    String helpWeb = getString(R.string.url_help);
-                    if (!helpWeb.isEmpty()) {
-                        Uri uriUrl = Uri.parse(helpWeb);
-                        Intent intent = new Intent(Intent.ACTION_VIEW, uriUrl);
-                        DisplayUtils.startIntentIfAppAvailable(intent, this, R.string.no_browser_available);
-                    }
+                    DisplayUtils.startLinkIntent(this, R.string.url_help);
                     return true;
                 });
             } else {
@@ -482,6 +550,13 @@ public class SettingsActivity extends ThemedPreferenceActivity
     private void setupBackupPreference() {
         Preference pContactsBackup = findPreference("backup");
         if (pContactsBackup != null) {
+            boolean showCalendarBackup = getResources().getBoolean(R.bool.show_calendar_backup);
+            pContactsBackup.setTitle(showCalendarBackup
+                                         ? getString(R.string.backup_title)
+                                         : getString(R.string.contact_backup_title));
+            pContactsBackup.setSummary(showCalendarBackup
+                                           ? getString(R.string.prefs_daily_backup_summary)
+                                           : getString(R.string.prefs_daily_contact_backup_summary));
             pContactsBackup.setOnPreferenceClickListener(preference -> {
                 ContactsPreferenceActivity.startActivityWithoutSidebar(this);
                 return true;
@@ -499,11 +574,10 @@ public class SettingsActivity extends ThemedPreferenceActivity
                     try {
                         launchDavDroidLogin();
                     } catch (Throwable t) {
-                        Log_OC.e(TAG, "Base Uri for account could not be resolved to call DAVdroid!", t);
+                        Log_OC.e(TAG, "Error while setting up DavX5", t);
                         DisplayUtils.showSnackMessage(
-                                activity,
-                                R.string.prefs_calendar_contacts_address_resolve_error
-                        );
+                            activity,
+                            R.string.prefs_davx5_setup_error);
                     }
                     return true;
                 });
@@ -513,20 +587,22 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
-    private void setupDetailsCategory(int accentColor, PreferenceScreen preferenceScreen) {
+    private void setupDetailsCategory(PreferenceScreen preferenceScreen) {
         PreferenceCategory preferenceCategoryDetails = (PreferenceCategory) findPreference("details");
-        preferenceCategoryDetails.setTitle(themeTextUtils.getColoredTitle(getString(R.string.prefs_category_details),
-                                                                          accentColor));
+        viewThemeUtils.files.themePreferenceCategory(preferenceCategoryDetails);
 
         boolean fPassCodeEnabled = getResources().getBoolean(R.bool.passcode_enabled);
         boolean fDeviceCredentialsEnabled = getResources().getBoolean(R.bool.device_credentials_enabled);
         boolean fShowHiddenFilesEnabled = getResources().getBoolean(R.bool.show_hidden_files_enabled);
+        boolean fShowEcosystemAppsEnabled = !getResources().getBoolean(R.bool.is_branded_client);
         boolean fSyncedFolderLightEnabled = getResources().getBoolean(R.bool.syncedFolder_light);
         boolean fShowMediaScanNotifications = preferences.isShowMediaScanNotifications();
 
         setupLockPreference(preferenceCategoryDetails, fPassCodeEnabled, fDeviceCredentialsEnabled);
 
         setupHiddenFilesPreference(preferenceCategoryDetails, fShowHiddenFilesEnabled);
+
+        setupShowEcosystemAppsPreference(preferenceCategoryDetails, fShowEcosystemAppsEnabled);
 
         setupShowMediaScanNotifications(preferenceCategoryDetails, fShowMediaScanNotifications);
 
@@ -558,6 +634,20 @@ public class SettingsActivity extends ThemedPreferenceActivity
             preferenceCategoryDetails.removePreference(showHiddenFiles);
         }
     }
+
+    private void setupShowEcosystemAppsPreference(PreferenceCategory preferenceCategoryDetails,
+                                            boolean fShowEcosystemAppsEnabled) {
+        showEcosystemApps = (ThemeableSwitchPreference) findPreference("show_ecosystem_apps");
+        if (fShowEcosystemAppsEnabled) {
+            showEcosystemApps.setOnPreferenceClickListener(preference -> {
+                preferences.setShowEcosystemApps(showEcosystemApps.isChecked());
+                return true;
+            });
+        } else {
+            preferenceCategoryDetails.removePreference(showEcosystemApps);
+        }
+    }
+
 
     private void setupLockPreference(PreferenceCategory preferenceCategoryDetails,
                                      boolean passCodeEnabled,
@@ -609,17 +699,16 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
-    private void setupAutoUploadCategory(int accentColor, PreferenceScreen preferenceScreen) {
-        PreferenceCategory preferenceCategorySyncedFolders =
+    private void setupAutoUploadCategory(PreferenceScreen preferenceScreen) {
+        final PreferenceCategory preferenceCategorySyncedFolders =
             (PreferenceCategory) findPreference("synced_folders_category");
-        preferenceCategorySyncedFolders.setTitle(themeTextUtils.getColoredTitle(getString(R.string.drawer_synced_folders),
-                                                                                accentColor));
+        viewThemeUtils.files.themePreferenceCategory(preferenceCategorySyncedFolders);
 
         if (!getResources().getBoolean(R.bool.syncedFolder_light)) {
             preferenceScreen.removePreference(preferenceCategorySyncedFolders);
         } else {
             // Upload on WiFi
-            final ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProvider(getContentResolver());
+            final ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProviderImpl(this);
 
             final SwitchPreference pUploadOnWifiCheckbox = (SwitchPreference) findPreference("synced_folder_on_wifi");
             pUploadOnWifiCheckbox.setChecked(
@@ -653,7 +742,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
             Intent i = new Intent(getApplicationContext(), PassCodeActivity.class);
             i.setAction(PassCodeActivity.ACTION_REQUEST_WITH_RESULT);
             startActivityForResult(i, ACTION_REQUEST_PASSCODE);
-        } else if (LOCK_DEVICE_CREDENTIALS.equals(lock)){
+        } else if (LOCK_DEVICE_CREDENTIALS.equals(lock)) {
             if (!DeviceCredentialUtils.areCredentialsAvailable(getApplicationContext())) {
                 DisplayUtils.showSnackMessage(this, R.string.prefs_lock_device_credentials_not_setup);
             } else {
@@ -680,10 +769,9 @@ public class SettingsActivity extends ThemedPreferenceActivity
         }
     }
 
-    private void setupGeneralCategory(int accentColor) {
-        PreferenceCategory preferenceCategoryGeneral = (PreferenceCategory) findPreference("general");
-        preferenceCategoryGeneral.setTitle(themeTextUtils.getColoredTitle(getString(R.string.prefs_category_general),
-                                                                          accentColor));
+    private void setupGeneralCategory() {
+        final PreferenceCategory preferenceCategoryGeneral = (PreferenceCategory) findPreference("general");
+        viewThemeUtils.files.themePreferenceCategory(preferenceCategoryGeneral);
 
         prefStoragePath = (ListPreference) findPreference(AppPreferencesImpl.STORAGE_PATH);
         if (prefStoragePath != null) {
@@ -737,9 +825,14 @@ public class SettingsActivity extends ThemedPreferenceActivity
             DarkMode mode = DarkMode.valueOf((String) newValue);
             preferences.setDarkThemeMode(mode);
             MainApp.setAppTheme(mode);
+            setListBackground();
 
             return true;
         });
+    }
+
+    private void setListBackground() {
+        getListView().setBackgroundColor(ContextCompat.getColor(this, R.color.bg_default));
     }
 
     private String getAppVersion() {
@@ -764,12 +857,17 @@ public class SettingsActivity extends ThemedPreferenceActivity
         ActionBar actionBar = getDelegate().getSupportActionBar();
 
         if (actionBar != null) {
-            themeToolbarUtils.setColoredTitle(actionBar, getString(R.string.actionbar_settings), this);
-            themeToolbarUtils.colorStatusBar(this);
-            actionBar.setBackgroundDrawable(new ColorDrawable(themeColorUtils.primaryAppbarColor(this)));
-
+            viewThemeUtils.platform.themeStatusBar(this);
             actionBar.setDisplayHomeAsUpEnabled(true);
-            themeToolbarUtils.tintBackButton(actionBar, this);
+            actionBar.setDisplayShowTitleEnabled(true);
+            if (this.getResources() != null) {
+                viewThemeUtils.androidx.themeActionBar(this,
+                                                       actionBar,
+                                                       getString(R.string.actionbar_settings),
+                                                       ResourcesCompat.getDrawable(this.getResources(),
+                                                                                   R.drawable.ic_arrow_back,
+                                                                                   null));
+            }
         }
     }
 
@@ -779,7 +877,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
         if (getPackageManager().resolveActivity(davDroidLoginIntent, 0) != null) {
             // arguments
             if (serverBaseUri != null) {
-                davDroidLoginIntent.putExtra("url", serverBaseUri.toString() + DAV_PATH);
+                davDroidLoginIntent.putExtra("url", serverBaseUri + DAV_PATH);
 
                 davDroidLoginIntent.putExtra("loginFlow", TRUE_VALUE);
                 davDroidLoginIntent.setData(Uri.parse(serverBaseUri.toString() + AuthenticatorActivity.WEB_LOGIN));
@@ -797,9 +895,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
                 startActivity(installIntent);
             } else {
                 // no f-droid market app or Play store installed --> launch browser for f-droid url
-                Intent downloadIntent = new Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://f-droid.org/repository/browse/?fdid=at.bitfire.davdroid"));
-                DisplayUtils.startIntentIfAppAvailable(downloadIntent, this, R.string.no_browser_available);
+                DisplayUtils.startLinkIntent(this, "https://f-droid.org/packages/at.bitfire.davdroid/");
 
                 DisplayUtils.showSnackMessage(this, R.string.prefs_calendar_contacts_no_store_error);
             }
@@ -819,7 +915,6 @@ public class SettingsActivity extends ThemedPreferenceActivity
     }
 
 
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
@@ -834,7 +929,7 @@ public class SettingsActivity extends ThemedPreferenceActivity
             String passcode = data.getStringExtra(PassCodeActivity.KEY_PASSCODE);
             if (passcode != null && passcode.length() == 4) {
                 SharedPreferences.Editor appPrefs = PreferenceManager
-                        .getDefaultSharedPreferences(getApplicationContext()).edit();
+                    .getDefaultSharedPreferences(getApplicationContext()).edit();
 
                 for (int i = 1; i <= 4; ++i) {
                     appPrefs.putString(PassCodeActivity.PREFERENCE_PASSCODE_D + i, passcode.substring(i - 1, i));
@@ -865,6 +960,11 @@ public class SettingsActivity extends ThemedPreferenceActivity
             }
         } else if (requestCode == ACTION_SHOW_MNEMONIC && resultCode == RESULT_OK) {
             handleMnemonicRequest(data);
+        } else if (requestCode == ACTION_E2E && data != null && data.getBooleanExtra(SetupEncryptionDialogFragment.SUCCESS, false)) {
+            Intent i = new Intent(this, SettingsActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            i.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(i);
         }
     }
 
@@ -877,18 +977,20 @@ public class SettingsActivity extends ThemedPreferenceActivity
                                  RequestCredentialsActivity.KEY_CHECK_RESULT_FALSE) ==
                 RequestCredentialsActivity.KEY_CHECK_RESULT_TRUE) {
 
-                ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProvider(getContentResolver());
-                String mnemonic = arbitraryDataProvider.getValue(user.getAccountName(), EncryptionUtils.MNEMONIC);
+                ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProviderImpl(this);
+                String mnemonic = arbitraryDataProvider.getValue(user.getAccountName(), EncryptionUtils.MNEMONIC).trim();
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.FallbackTheming_Dialog);
                 AlertDialog alertDialog = builder.setTitle(R.string.prefs_e2e_mnemonic)
                     .setMessage(mnemonic)
+                    .setNegativeButton(R.string.common_cancel, (dialog, i) -> dialog.dismiss())
+                    .setNeutralButton(R.string.common_copy, (dialog, i) ->
+                        ClipboardUtil.copyToClipboard(this, mnemonic, false))
                     .setPositiveButton(R.string.common_ok, (dialog, which) -> dialog.dismiss())
                     .create();
 
                 alertDialog.show();
-                themeButtonUtils.themeBorderlessButton(themeColorUtils,
-                                                       alertDialog.getButton(AlertDialog.BUTTON_POSITIVE));
+                viewThemeUtils.platform.colorTextButtons(alertDialog.getButton(AlertDialog.BUTTON_POSITIVE));
             }
         }
     }

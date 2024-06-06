@@ -1,22 +1,9 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.files;
 
@@ -38,14 +25,14 @@ public class CreateFileFromTemplateOperation extends RemoteOperation {
     private static final String NEW_FROM_TEMPLATE_URL = "/ocs/v2.php/apps/richdocuments/api/v1/templates/new";
 
     private String path;
-    private int templateId;
+    private long templateId;
 
     // JSON node names
     private static final String NODE_OCS = "ocs";
     private static final String NODE_DATA = "data";
     private static final String JSON_FORMAT = "?format=json";
 
-    public CreateFileFromTemplateOperation(String path, int templateId) {
+    public CreateFileFromTemplateOperation(String path, long templateId) {
         this.path = path;
         this.templateId = templateId;
     }

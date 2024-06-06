@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client.logger.ui
 
@@ -33,15 +20,17 @@ import com.nextcloud.client.di.ViewModelFactory
 import com.owncloud.android.R
 import com.owncloud.android.databinding.LogsActivityBinding
 import com.owncloud.android.ui.activity.ToolbarActivity
-import com.owncloud.android.utils.theme.ThemeBarUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import javax.inject.Inject
 
 class LogsActivity : ToolbarActivity() {
 
     @Inject
-    protected lateinit var viewModelFactory: ViewModelFactory
+    lateinit var viewModelFactory: ViewModelFactory
+
     @Inject
-    protected lateinit var themeBarUtils: ThemeBarUtils
+    lateinit var viewThemeUtils: ViewThemeUtils
+
     private lateinit var vm: LogsViewModel
     private lateinit var binding: LogsActivityBinding
     private lateinit var logsAdapter: LogsAdapter
@@ -66,7 +55,7 @@ class LogsActivity : ToolbarActivity() {
         }
 
         findViewById<ProgressBar>(R.id.logs_loading_progress).apply {
-            themeBarUtils.themeProgressBar(context, this, themeColorUtils)
+            viewThemeUtils.platform.themeHorizontalProgressBar(this)
         }
 
         logsAdapter = LogsAdapter(this)
@@ -80,17 +69,18 @@ class LogsActivity : ToolbarActivity() {
 
         setupToolbar()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.apply { themeToolbarUtils.setColoredTitle(this, getString(R.string.logs_title), baseContext) }
 
-        themeToolbarUtils.tintBackButton(supportActionBar, baseContext)
+        supportActionBar?.let {
+            viewThemeUtils.files.themeActionBar(this, it, R.string.logs_title)
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.activity_logs, menu)
+
         (menu.findItem(R.id.action_search).actionView as SearchView).apply {
             setOnQueryTextListener(searchBoxListener)
-
-            themeToolbarUtils.themeSearchView(this, context)
+            viewThemeUtils.androidx.themeToolbarSearchView(this)
         }
         return super.onCreateOptionsMenu(menu)
     }

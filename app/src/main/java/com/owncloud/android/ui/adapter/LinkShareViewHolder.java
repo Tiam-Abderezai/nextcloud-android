@@ -9,18 +9,7 @@
  * Copyright (C) 2020 Nextcloud GmbH
  * Copyright (C) 2021 TSI-mc
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.adapter;
@@ -35,8 +24,7 @@ import com.owncloud.android.databinding.FileDetailsShareLinkShareItemBinding;
 import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.lib.resources.shares.ShareType;
 import com.owncloud.android.ui.fragment.util.SharingMenuHelper;
-import com.owncloud.android.utils.theme.ThemeAvatarUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.res.ResourcesCompat;
@@ -45,8 +33,7 @@ import androidx.recyclerview.widget.RecyclerView;
 class LinkShareViewHolder extends RecyclerView.ViewHolder {
     private FileDetailsShareLinkShareItemBinding binding;
     private Context context;
-    private ThemeColorUtils themeColorUtils;
-    private ThemeAvatarUtils themeAvatarUtils;
+    private ViewThemeUtils viewThemeUtils;
 
     public LinkShareViewHolder(@NonNull View itemView) {
         super(itemView);
@@ -54,13 +41,11 @@ class LinkShareViewHolder extends RecyclerView.ViewHolder {
 
     public LinkShareViewHolder(FileDetailsShareLinkShareItemBinding binding,
                                Context context,
-                               ThemeColorUtils themeColorUtils,
-                               ThemeAvatarUtils themeAvatarUtils) {
+                               final ViewThemeUtils viewThemeUtils) {
         this(binding.getRoot());
         this.binding = binding;
         this.context = context;
-        this.themeColorUtils = themeColorUtils;
-        this.themeAvatarUtils = themeAvatarUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     public void bind(OCShare publicShare, ShareeListAdapterListener listener) {
@@ -80,24 +65,31 @@ class LinkShareViewHolder extends RecyclerView.ViewHolder {
                 String text = String.format(context.getString(R.string.share_link_with_label), publicShare.getLabel());
                 binding.name.setText(text);
             } else {
-                binding.name.setText(R.string.share_link);
+                if (SharingMenuHelper.isSecureFileDrop(publicShare)) {
+                    binding.name.setText(context.getResources().getString(R.string.share_permission_secure_file_drop));
+                } else {
+                    binding.name.setText(R.string.share_link);
+                }
             }
 
-            themeAvatarUtils.colorIconImageViewWithBackground(binding.icon, context, themeColorUtils);
+            viewThemeUtils.platform.colorImageViewBackgroundAndIcon(binding.icon);
         }
 
         String permissionName = SharingMenuHelper.getPermissionName(context, publicShare);
-        setPermissionName(permissionName);
+        setPermissionName(publicShare, permissionName);
 
         binding.copyLink.setOnClickListener(v -> listener.copyLink(publicShare));
         binding.overflowMenu.setOnClickListener(v -> listener.showSharingMenuActionSheet(publicShare));
-        binding.shareByLinkContainer.setOnClickListener(v -> listener.showPermissionsDialog(publicShare));
+        if (!SharingMenuHelper.isSecureFileDrop(publicShare)) {
+            binding.shareByLinkContainer.setOnClickListener(v -> listener.showPermissionsDialog(publicShare));
+        }
     }
 
-    private void setPermissionName(String permissionName) {
-        if (!TextUtils.isEmpty(permissionName)) {
+    private void setPermissionName(OCShare publicShare, String permissionName) {
+        if (!TextUtils.isEmpty(permissionName) && !SharingMenuHelper.isSecureFileDrop(publicShare)) {
             binding.permissionName.setText(permissionName);
             binding.permissionName.setVisibility(View.VISIBLE);
+            viewThemeUtils.androidx.colorPrimaryTextViewElement(binding.permissionName);
         } else {
             binding.permissionName.setVisibility(View.GONE);
         }

@@ -1,30 +1,17 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author masensio
- * @author Andy Scherzinger
- * @author Chris Narkiewicz <hello@ezaquarii.com>
- *
- * Copyright (C) 2015 ownCloud GmbH
- * Copyright (C) 2018 Andy Scherzinger
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- * Copyright (C) 2020 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2017-2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH
+ * SPDX-FileCopyrightText: 2015-2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter;
 
+import android.annotation.SuppressLint;
 import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
@@ -35,16 +22,15 @@ import com.owncloud.android.R;
 import com.owncloud.android.databinding.FileDetailsShareInternalShareLinkBinding;
 import com.owncloud.android.databinding.FileDetailsShareLinkShareItemBinding;
 import com.owncloud.android.databinding.FileDetailsSharePublicLinkAddNewItemBinding;
+import com.owncloud.android.databinding.FileDetailsShareSecureFileDropAddNewItemBinding;
 import com.owncloud.android.databinding.FileDetailsShareShareItemBinding;
 import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.lib.resources.shares.ShareType;
 import com.owncloud.android.ui.activity.FileActivity;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeAvatarUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import androidx.annotation.NonNull;
@@ -62,23 +48,23 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private final float avatarRadiusDimension;
     private final String userId;
     private final User user;
-    private final ThemeColorUtils themeColorUtils;
-    private final ThemeAvatarUtils themeAvatarUtils;
+    private final ViewThemeUtils viewThemeUtils;
+    private final boolean encrypted;
 
     public ShareeListAdapter(FileActivity fileActivity,
                              List<OCShare> shares,
                              ShareeListAdapterListener listener,
                              String userId,
                              User user,
-                             ThemeColorUtils themeColorUtils,
-                             ThemeAvatarUtils themeAvatarUtils) {
+                             final ViewThemeUtils viewThemeUtils,
+                             boolean encrypted) {
         this.fileActivity = fileActivity;
         this.shares = shares;
         this.listener = listener;
         this.userId = userId;
         this.user = user;
-        this.themeColorUtils = themeColorUtils;
-        this.themeAvatarUtils = themeAvatarUtils;
+        this.viewThemeUtils = viewThemeUtils;
+        this.encrypted = encrypted;
 
         avatarRadiusDimension = fileActivity.getResources().getDimension(R.dimen.user_icon_radius);
 
@@ -94,33 +80,42 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     @Override
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         switch (ShareType.fromValue(viewType)) {
-            case PUBLIC_LINK:
-            case EMAIL:
+            case PUBLIC_LINK, EMAIL -> {
                 return new LinkShareViewHolder(
                     FileDetailsShareLinkShareItemBinding.inflate(LayoutInflater.from(fileActivity),
                                                                  parent,
                                                                  false),
                     fileActivity,
-                    themeColorUtils,
-                    themeAvatarUtils);
-            case NEW_PUBLIC_LINK:
-                return new NewLinkShareViewHolder(
-                    FileDetailsSharePublicLinkAddNewItemBinding.inflate(LayoutInflater.from(fileActivity),
-                                                                        parent,
-                                                                        false)
-                );
-            case INTERNAL:
+                    viewThemeUtils);
+            }
+            case NEW_PUBLIC_LINK -> {
+                if (encrypted) {
+                    return new NewSecureFileDropViewHolder(
+                        FileDetailsShareSecureFileDropAddNewItemBinding.inflate(LayoutInflater.from(fileActivity),
+                                                                                parent,
+                                                                                false)
+                    );
+                } else {
+                    return new NewLinkShareViewHolder(
+                        FileDetailsSharePublicLinkAddNewItemBinding.inflate(LayoutInflater.from(fileActivity),
+                                                                            parent,
+                                                                            false)
+                    );
+                }
+            }
+            case INTERNAL -> {
                 return new InternalShareViewHolder(
                     FileDetailsShareInternalShareLinkBinding.inflate(LayoutInflater.from(fileActivity), parent, false),
                     fileActivity);
-            default:
+            }
+            default -> {
                 return new ShareViewHolder(FileDetailsShareShareItemBinding.inflate(LayoutInflater.from(fileActivity),
                                                                                     parent,
                                                                                     false),
                                            user,
                                            fileActivity,
-                                           themeColorUtils,
-                                           themeAvatarUtils);
+                                           viewThemeUtils);
+            }
         }
     }
 
@@ -132,15 +127,14 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
         final OCShare share = shares.get(position);
 
-        if (holder instanceof LinkShareViewHolder) {
-            LinkShareViewHolder publicShareViewHolder = (LinkShareViewHolder) holder;
+        if (holder instanceof LinkShareViewHolder publicShareViewHolder) {
             publicShareViewHolder.bind(share, listener);
-        } else if (holder instanceof InternalShareViewHolder) {
-            InternalShareViewHolder internalShareViewHolder = (InternalShareViewHolder) holder;
+        } else if (holder instanceof InternalShareViewHolder internalShareViewHolder) {
             internalShareViewHolder.bind(share, listener);
-        } else if (holder instanceof NewLinkShareViewHolder) {
-            NewLinkShareViewHolder newLinkShareViewHolder = (NewLinkShareViewHolder) holder;
+        } else if (holder instanceof NewLinkShareViewHolder newLinkShareViewHolder) {
             newLinkShareViewHolder.bind(listener);
+        } else if (holder instanceof NewSecureFileDropViewHolder newSecureFileDropViewHolder) {
+            newSecureFileDropViewHolder.bind(listener);
         } else {
             ShareViewHolder userViewHolder = (ShareViewHolder) holder;
             userViewHolder.bind(share, listener, this, userId, avatarRadiusDimension);
@@ -157,6 +151,7 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         return shares.size();
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void addShares(List<OCShare> sharesToAdd) {
         shares.addAll(sharesToAdd);
         sortShares();
@@ -165,22 +160,21 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
     @Override
     public void avatarGenerated(Drawable avatarDrawable, Object callContext) {
-        if (callContext instanceof ImageView) {
-            ImageView iv = (ImageView) callContext;
+        if (callContext instanceof ImageView iv) {
             iv.setImageDrawable(avatarDrawable);
         }
     }
 
     @Override
     public boolean shouldCallGeneratedCallback(String tag, Object callContext) {
-        if (callContext instanceof ImageView) {
-            ImageView iv = (ImageView) callContext;
+        if (callContext instanceof ImageView iv) {
             // needs to be changed once federated users have avatars
             return String.valueOf(iv.getTag()).equals(tag.split("@")[0]);
         }
         return false;
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     public void remove(OCShare share) {
         shares.remove(share);
         notifyDataSetChanged();
@@ -201,16 +195,18 @@ public class ShareeListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             }
         }
 
-        Collections.sort(links, (o1, o2) -> Long.compare(o2.getSharedDate(), o1.getSharedDate()));
-        Collections.sort(users, (o1, o2) -> Long.compare(o2.getSharedDate(), o1.getSharedDate()));
+        links.sort((o1, o2) -> Long.compare(o2.getSharedDate(), o1.getSharedDate()));
+        users.sort((o1, o2) -> Long.compare(o2.getSharedDate(), o1.getSharedDate()));
 
         shares = links;
         shares.addAll(users);
 
         // add internal share link at end
-        final OCShare ocShare = new OCShare();
-        ocShare.setShareType(ShareType.INTERNAL);
-        shares.add(ocShare);
+        if (!encrypted) {
+            final OCShare ocShare = new OCShare();
+            ocShare.setShareType(ShareType.INTERNAL);
+            shares.add(ocShare);
+        }
     }
 
     public List<OCShare> getShares() {

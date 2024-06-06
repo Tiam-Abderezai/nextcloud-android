@@ -1,26 +1,14 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author Tobias Kaminsky
- *   @author David A. Velasco
- *   @author Chris Narkiewicz
- *   Copyright (C) 2015 ownCloud Inc.
- *   Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022-2023 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2017-2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2016-2020 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.datamodel;
 
 import android.content.Context;
@@ -55,6 +43,7 @@ import com.owncloud.android.lib.common.OwnCloudClient;
 import com.owncloud.android.lib.common.OwnCloudClientManagerFactory;
 import com.owncloud.android.lib.common.operations.RemoteOperation;
 import com.owncloud.android.lib.common.utils.Log_OC;
+import com.owncloud.android.lib.resources.files.model.ImageDimension;
 import com.owncloud.android.lib.resources.files.model.ServerFileInterface;
 import com.owncloud.android.lib.resources.trashbin.model.TrashbinFile;
 import com.owncloud.android.ui.TextDrawable;
@@ -62,26 +51,29 @@ import com.owncloud.android.ui.adapter.DiskLruImageCache;
 import com.owncloud.android.ui.fragment.FileFragment;
 import com.owncloud.android.ui.preview.PreviewImageFragment;
 import com.owncloud.android.utils.BitmapUtils;
+import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.DisplayUtils.AvatarGenerationListener;
 import com.owncloud.android.utils.FileStorageUtils;
 import com.owncloud.android.utils.MimeTypeUtil;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.methods.GetMethod;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
 import java.util.List;
-import java.util.Locale;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.core.content.res.ResourcesCompat;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import kotlin.text.Charsets;
 
 /**
  * Manager for concurrent access to thumbnails cache.
@@ -150,7 +142,7 @@ public final class ThumbnailsCacheManager {
                         mThumbnailCache = new DiskLruImageCache(diskCacheDir, DISK_CACHE_SIZE, mCompressFormat,
                                                                 mCompressQuality);
                     } catch (Exception e) {
-                        Log_OC.d(TAG, String.format(Locale.US, "Disk cache init failed: %s", e.getMessage()));
+                        Log_OC.d(TAG, "Disk cache init failed", e);
                         mThumbnailCache = null;
                     }
                 }
@@ -201,7 +193,10 @@ public final class ThumbnailsCacheManager {
         thumbnail = BitmapUtils.rotateImage(thumbnail,path);
 
         // Add thumbnail to cache
-        addBitmapToCache(imageKey, thumbnail);
+        // do not overwrite any pre-existing image
+        if (!mThumbnailCache.containsKey(imageKey)) {
+            addBitmapToCache(imageKey, thumbnail);
+        }
 
         return thumbnail;
     }
@@ -252,6 +247,141 @@ public final class ThumbnailsCacheManager {
         return null;
     }
 
+    public static class GalleryImageGenerationTask extends AsyncTask<Object, Void, Bitmap> {
+        private final User user;
+        private final FileDataStorageManager storageManager;
+        private final WeakReference<ImageView> imageViewReference;
+        private OCFile file;
+        private String imageKey;
+        private GalleryListener listener;
+        private List<GalleryImageGenerationTask> asyncTasks;
+        private int backgroundColor;
+        private boolean newImage = false;
+
+        public GalleryImageGenerationTask(
+            ImageView imageView,
+            User user,
+            FileDataStorageManager storageManager,
+            List<GalleryImageGenerationTask> asyncTasks,
+            String imageKey,
+            int backgroundColor
+                                         ) {
+            this.user = user;
+            this.storageManager = storageManager;
+            imageViewReference = new WeakReference<>(imageView);
+            this.asyncTasks = asyncTasks;
+            this.imageKey = imageKey;
+            this.backgroundColor = backgroundColor;
+        }
+
+        public void setListener(GalleryImageGenerationTask.GalleryListener listener) {
+            this.listener = listener;
+        }
+
+        public String getImageKey() {
+            return imageKey;
+        }
+
+        @Override
+        protected Bitmap doInBackground(Object... params) {
+            Bitmap thumbnail;
+
+            file = (OCFile) params[0];
+
+
+            if (file.getRemoteId() != null && file.isPreviewAvailable()) {
+                // Thumbnail in cache?
+                thumbnail = ThumbnailsCacheManager.getBitmapFromDiskCache(
+                    ThumbnailsCacheManager.PREFIX_RESIZED_IMAGE + file.getRemoteId()
+                                                                         );
+
+                if (thumbnail != null && !file.isUpdateThumbnailNeeded()) {
+                    Float size = (float) ThumbnailsCacheManager.getThumbnailDimension();
+
+                    // resized dimensions
+                    ImageDimension imageDimension = file.getImageDimension();
+                    if (imageDimension == null ||
+                        imageDimension.getWidth() != size ||
+                        imageDimension.getHeight() != size) {
+                        file.setImageDimension(new ImageDimension(thumbnail.getWidth(), thumbnail.getHeight()));
+                        storageManager.saveFile(file);
+                    }
+
+                    if (MimeTypeUtil.isVideo(file)) {
+                        return ThumbnailsCacheManager.addVideoOverlay(thumbnail, MainApp.getAppContext());
+                    } else {
+                        return thumbnail;
+                    }
+                } else {
+                    try {
+                        mClient = OwnCloudClientManagerFactory.getDefaultSingleton().getClientFor(user.toOwnCloudAccount(),
+                                                                                                  MainApp.getAppContext());
+
+                        thumbnail = doResizedImageInBackground(file, storageManager);
+                        newImage = true;
+
+                        if (MimeTypeUtil.isVideo(file) && thumbnail != null) {
+                            thumbnail = addVideoOverlay(thumbnail, MainApp.getAppContext());
+                        }
+
+                    } catch (OutOfMemoryError oome) {
+                        Log_OC.e(TAG, "Out of memory");
+                    } catch (Throwable t) {
+                        // the app should never break due to a problem with thumbnails
+                        Log_OC.e(TAG, "Generation of gallery image for " + file + " failed", t);
+                    }
+
+                    return thumbnail;
+                }
+            }
+
+            return null;
+        }
+
+        protected void onPostExecute(Bitmap bitmap) {
+            if (bitmap != null && imageViewReference != null) {
+                final ImageView imageView = imageViewReference.get();
+                final GalleryImageGenerationTask bitmapWorkerTask = getGalleryImageGenerationTask(imageView);
+
+                if (this == bitmapWorkerTask) {
+                    String tagId = String.valueOf(file.getFileId());
+
+                    if (String.valueOf(imageView.getTag()).equals(tagId)) {
+                        if ("image/png".equalsIgnoreCase(file.getMimeType())) {
+                            imageView.setBackgroundColor(backgroundColor);
+                        }
+
+                        if (newImage && listener != null) {
+                            listener.onNewGalleryImage();
+                        }
+                        imageView.setImageBitmap(bitmap);
+                        imageView.invalidate();
+                    }
+                }
+
+                if (listener != null) {
+                    listener.onSuccess();
+                }
+            } else {
+                if (listener != null) {
+                    listener.onError();
+                }
+            }
+
+            if (asyncTasks != null) {
+                asyncTasks.remove(this);
+            }
+        }
+
+        public interface GalleryListener {
+            void onSuccess();
+
+            void onNewGalleryImage();
+
+            void onError();
+        }
+    }
+
     public static class ResizedImageGenerationTask extends AsyncTask<Object, Void, Bitmap> {
         private final FileFragment fileFragment;
         private final FileDataStorageManager storageManager;
@@ -289,10 +419,10 @@ public final class ThumbnailsCacheManager {
                 mClient = OwnCloudClientManagerFactory.getDefaultSingleton().getClientFor(user.toOwnCloudAccount(),
                                                                                           MainApp.getAppContext());
 
-                thumbnail = doResizedImageInBackground();
+                thumbnail = doResizedImageInBackground(file, storageManager);
 
                 if (MimeTypeUtil.isVideo(file) && thumbnail != null) {
-                    thumbnail = addVideoOverlay(thumbnail);
+                    thumbnail = addVideoOverlay(thumbnail, MainApp.getAppContext());
                 }
 
             } catch (OutOfMemoryError oome) {
@@ -303,79 +433,6 @@ public final class ThumbnailsCacheManager {
             }
 
             return thumbnail;
-        }
-
-        private Bitmap doResizedImageInBackground() {
-            Bitmap thumbnail;
-
-            String imageKey = PREFIX_RESIZED_IMAGE + file.getRemoteId();
-
-            // Check disk cache in background thread
-            thumbnail = getBitmapFromDiskCache(imageKey);
-
-            // Not found in disk cache
-            if (thumbnail == null || file.isUpdateThumbnailNeeded()) {
-                Point p = getScreenDimension();
-                int pxW = p.x;
-                int pxH = p.y;
-
-                if (file.isDown()) {
-                    Bitmap bitmap = BitmapUtils.decodeSampledBitmapFromFile(file.getStoragePath(), pxW, pxH);
-
-                    if (bitmap != null) {
-                        // Handle PNG
-                        if (PNG_MIMETYPE.equalsIgnoreCase(file.getMimeType())) {
-                            bitmap = handlePNG(bitmap, pxW, pxH);
-                        }
-
-                        thumbnail = addThumbnailToCache(imageKey, bitmap, file.getStoragePath(), pxW, pxH);
-
-                        file.setUpdateThumbnailNeeded(false);
-                        storageManager.saveFile(file);
-                    }
-
-                } else {
-                    // Download thumbnail from server
-                    if (mClient != null) {
-                        GetMethod getMethod = null;
-                        try {
-                            String uri = mClient.getBaseUri() + "/index.php/core/preview.png?file="
-                                + URLEncoder.encode(file.getRemotePath())
-                                    + "&x=" + pxW + "&y=" + pxH + "&a=1&mode=cover&forceIcon=0";
-                            getMethod = new GetMethod(uri);
-
-                            int status = mClient.executeMethod(getMethod);
-                            if (status == HttpStatus.SC_OK) {
-                                InputStream inputStream = getMethod.getResponseBodyAsStream();
-                                thumbnail = BitmapFactory.decodeStream(inputStream);
-                            } else {
-                                mClient.exhaustResponse(getMethod.getResponseBodyAsStream());
-                            }
-
-                                // Handle PNG
-                                if (thumbnail != null && PNG_MIMETYPE.equalsIgnoreCase(file.getMimeType())) {
-                                    thumbnail = handlePNG(thumbnail, thumbnail.getWidth(), thumbnail.getHeight());
-                                }
-
-                            // Add thumbnail to cache
-                            if (thumbnail != null) {
-                                Log_OC.d(TAG, "add thumbnail to cache: " + file.getFileName());
-                                addBitmapToCache(imageKey, thumbnail);
-                            }
-
-                        } catch (Exception e) {
-                            Log_OC.d(TAG, e.getMessage(), e);
-                        } finally {
-                            if (getMethod != null) {
-                                getMethod.releaseConnection();
-                            }
-                        }
-                    }
-                }
-            }
-
-            return thumbnail;
-
         }
 
         protected void onPostExecute(Bitmap bitmap) {
@@ -421,7 +478,7 @@ public final class ThumbnailsCacheManager {
         private final Object file;
         private final String imageKey;
 
-        public ThumbnailGenerationTaskObject(Object file, String imageKey) {
+        public ThumbnailGenerationTaskObject(Object file, @Nullable String imageKey) {
             this.file = file;
             this.imageKey = imageKey;
         }
@@ -517,7 +574,7 @@ public final class ThumbnailsCacheManager {
                     thumbnail = doThumbnailFromOCFileInBackground();
 
                     if (MimeTypeUtil.isVideo((ServerFileInterface) mFile) && thumbnail != null) {
-                        thumbnail = addVideoOverlay(thumbnail);
+                        thumbnail = addVideoOverlay(thumbnail, MainApp.getAppContext());
                     }
                 } else if (mFile instanceof File) {
                     thumbnail = doFileInBackground();
@@ -526,7 +583,7 @@ public final class ThumbnailsCacheManager {
                     String mMimeType = FileStorageUtils.getMimeTypeFromName(url);
 
                     if (MimeTypeUtil.isVideo(mMimeType) && thumbnail != null) {
-                        thumbnail = addVideoOverlay(thumbnail);
+                        thumbnail = addVideoOverlay(thumbnail, MainApp.getAppContext());
                     }
                     //} else {  do nothing
                 }
@@ -608,7 +665,7 @@ public final class ThumbnailsCacheManager {
                         Bitmap bitmap;
                         if (MimeTypeUtil.isVideo(ocFile)) {
                             bitmap = ThumbnailUtils.createVideoThumbnail(ocFile.getStoragePath(),
-                                    MediaStore.Images.Thumbnails.MINI_KIND);
+                                                                         MediaStore.Images.Thumbnails.MINI_KIND);
                         } else {
                             bitmap = BitmapUtils.decodeSampledBitmapFromFile(ocFile.getStoragePath(), pxW, pxH);
                         }
@@ -652,16 +709,16 @@ public final class ThumbnailsCacheManager {
                                         pxW + "/" + pxH + Uri.encode(file.getRemotePath(), "/");
                                 } else {
                                     uri = mClient.getBaseUri() + "/index.php/apps/files_trashbin/preview?fileId=" +
-                                            file.getLocalId() + "&x=" + pxW + "&y=" + pxH;
+                                        file.getLocalId() + "&x=" + pxW + "&y=" + pxH;
                                 }
 
                                 Log_OC.d(TAG, "generate thumbnail: " + file.getFileName() + " URI: " + uri);
                                 getMethod = new GetMethod(uri);
                                 getMethod.setRequestHeader("Cookie",
-                                        "nc_sameSiteCookielax=true;nc_sameSiteCookiestrict=true");
+                                                           "nc_sameSiteCookielax=true;nc_sameSiteCookiestrict=true");
 
                                 getMethod.setRequestHeader(RemoteOperation.OCS_API_HEADER,
-                                        RemoteOperation.OCS_API_HEADER_VALUE);
+                                                           RemoteOperation.OCS_API_HEADER_VALUE);
 
                                 int status = mClient.executeMethod(getMethod, READ_TIMEOUT, CONNECTION_TIMEOUT);
                                 if (status == HttpStatus.SC_OK) {
@@ -757,18 +814,15 @@ public final class ThumbnailsCacheManager {
         private File mFile;
         private String mImageKey;
         private final Context mContext;
-        private final ThemeColorUtils themeColorUtils;
-        private final ThemeDrawableUtils themeDrawableUtils;
+        private final ViewThemeUtils viewThemeUtils;
 
         public MediaThumbnailGenerationTask(ImageView imageView,
                                             Context context,
-                                            ThemeColorUtils themeColorUtils,
-                                            ThemeDrawableUtils themeDrawableUtils) {
+                                            ViewThemeUtils viewThemeUtils) {
             // Use a WeakReference to ensure the ImageView can be garbage collected
             mImageViewReference = new WeakReference<>(imageView);
             mContext = context;
-            this.themeColorUtils = themeColorUtils;
-            this.themeDrawableUtils = themeDrawableUtils;
+            this.viewThemeUtils = viewThemeUtils;
         }
 
         @Override
@@ -815,9 +869,7 @@ public final class ThumbnailsCacheManager {
                 } else {
                     if (mFile != null) {
                         if (mFile.isDirectory()) {
-                            imageView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(mContext,
-                                                                                         themeColorUtils,
-                                                                                         themeDrawableUtils));
+                            imageView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(mContext, viewThemeUtils));
                         } else {
                             if (MimeTypeUtil.isVideo(mFile)) {
                                 imageView.setImageBitmap(ThumbnailsCacheManager.mDefaultVideo);
@@ -825,8 +877,7 @@ public final class ThumbnailsCacheManager {
                                 imageView.setImageDrawable(MimeTypeUtil.getFileTypeIcon(null,
                                                                                         mFile.getName(),
                                                                                         mContext,
-                                                                                        themeColorUtils,
-                                                                                        themeDrawableUtils));
+                                                                                        viewThemeUtils));
                             }
                         }
                     }
@@ -868,7 +919,7 @@ public final class ThumbnailsCacheManager {
                     } finally {
                         try {
                             retriever.release();
-                        } catch (RuntimeException ex) {
+                        } catch (RuntimeException | IOException ex) {
                             // Ignore failure at this point.
                             Log_OC.w(TAG, "Failed release MediaMetadataRetriever for " + file.getAbsolutePath());
                         }
@@ -971,7 +1022,7 @@ public final class ThumbnailsCacheManager {
 
             String accountName = mUserId + "@" + mServerName;
 
-            ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProvider(mContext.getContentResolver());
+            ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProviderImpl(mContext);
 
             String eTag = arbitraryDataProvider.getValue(accountName, ThumbnailsCacheManager.AVATAR);
             long timestamp = arbitraryDataProvider.getLongValue(accountName, ThumbnailsCacheManager.AVATAR_TIMESTAMP);
@@ -1107,22 +1158,28 @@ public final class ThumbnailsCacheManager {
         return null;
     }
 
-    public static Bitmap addVideoOverlay(Bitmap thumbnail) {
-        int playButtonWidth = (int) (thumbnail.getWidth() * 0.3);
-        int playButtonHeight = (int) (thumbnail.getHeight() * 0.3);
+    private static GalleryImageGenerationTask getGalleryImageGenerationTask(ImageView imageView) {
+        if (imageView != null) {
+            final Drawable drawable = imageView.getDrawable();
+            if (drawable instanceof AsyncGalleryImageDrawable) {
+                final AsyncGalleryImageDrawable asyncDrawable = (AsyncGalleryImageDrawable) drawable;
+                return asyncDrawable.getBitmapWorkerTask();
+            }
+        }
+        return null;
+    }
+
+    public static Bitmap addVideoOverlay(Bitmap thumbnail, Context context) {
 
         Drawable playButtonDrawable = ResourcesCompat.getDrawable(MainApp.getAppContext().getResources(),
-                                                                  R.drawable.view_play,
+                                                                  R.drawable.video_white,
                                                                   null);
 
-        Bitmap playButton = BitmapUtils.drawableToBitmap(playButtonDrawable,
-                                                         playButtonWidth,
-                                                         playButtonHeight);
+        int px = DisplayUtils.convertDpToPixel(24f, context);
 
-        Bitmap resizedPlayButton = Bitmap.createScaledBitmap(playButton,
-                                                             playButtonWidth,
-                                                             playButtonHeight,
-                                                             true);
+        Bitmap playButton = BitmapUtils.drawableToBitmap(playButtonDrawable, px, px);
+
+        Bitmap resizedPlayButton = Bitmap.createScaledBitmap(playButton, px, px, true);
 
         Bitmap resultBitmap = Bitmap.createBitmap(thumbnail.getWidth(),
                                                   thumbnail.getHeight(),
@@ -1130,32 +1187,13 @@ public final class ThumbnailsCacheManager {
 
         Canvas c = new Canvas(resultBitmap);
 
-        // compute visual center of play button, according to resized image
-        int x1 = resizedPlayButton.getWidth();
-        int y1 = resizedPlayButton.getHeight() / 2;
-        int x2 = 0;
-        int y2 = resizedPlayButton.getWidth();
-        int x3 = 0;
-        int y3 = 0;
-
-        double ym = ( ((Math.pow(x3,2) - Math.pow(x1,2) + Math.pow(y3,2) - Math.pow(y1,2)) *
-                (x2 - x1)) - (Math.pow(x2,2) - Math.pow(x1,2) + Math.pow(y2,2) -
-                Math.pow(y1,2)) * (x3 - x1) )  /  (2 * ( ((y3 - y1) * (x2 - x1)) -
-                ((y2 - y1) * (x3 - x1)) ));
-        double xm = ( (Math.pow(x2,2) - Math.pow(x1,2)) + (Math.pow(y2,2) - Math.pow(y1,2)) -
-                (2*ym*(y2 - y1)) ) / (2*(x2 - x1));
-
-        // offset to top left
-        double ox = - xm;
-
 
         c.drawBitmap(thumbnail, 0, 0, null);
 
         Paint p = new Paint();
         p.setAlpha(230);
 
-        c.drawBitmap(resizedPlayButton, (float) ((thumbnail.getWidth() / 2) + ox),
-                (float) ((thumbnail.getHeight() / 2) - ym), p);
+        c.drawBitmap(resizedPlayButton, px, px, p);
 
         return resultBitmap;
     }
@@ -1185,6 +1223,19 @@ public final class ThumbnailsCacheManager {
         }
 
         private ResizedImageGenerationTask getBitmapWorkerTask() {
+            return bitmapWorkerTaskReference.get();
+        }
+    }
+
+    public static class AsyncGalleryImageDrawable extends BitmapDrawable {
+        private final WeakReference<GalleryImageGenerationTask> bitmapWorkerTaskReference;
+
+        public AsyncGalleryImageDrawable(Resources res, Bitmap bitmap, GalleryImageGenerationTask bitmapWorkerTask) {
+            super(res, bitmap);
+            bitmapWorkerTaskReference = new WeakReference<>(bitmapWorkerTask);
+        }
+
+        private GalleryImageGenerationTask getBitmapWorkerTask() {
             return bitmapWorkerTaskReference.get();
         }
     }
@@ -1296,5 +1347,89 @@ public final class ThumbnailsCacheManager {
                 getMethod.releaseConnection();
             }
         }
+    }
+
+    @VisibleForTesting
+    public static void clearCache() {
+        mThumbnailCache.clearCache();
+        mThumbnailCache = null;
+    }
+
+    private static Bitmap doResizedImageInBackground(OCFile file, FileDataStorageManager storageManager) {
+        Bitmap thumbnail;
+
+        String imageKey = PREFIX_RESIZED_IMAGE + file.getRemoteId();
+
+        // Check disk cache in background thread
+        thumbnail = getBitmapFromDiskCache(imageKey);
+
+        // Not found in disk cache
+        if (thumbnail == null || file.isUpdateThumbnailNeeded()) {
+            Point p = getScreenDimension();
+            int pxW = p.x;
+            int pxH = p.y;
+
+            if (file.isDown()) {
+                Bitmap bitmap = BitmapUtils.decodeSampledBitmapFromFile(file.getStoragePath(), pxW, pxH);
+
+                if (bitmap != null) {
+                    // Handle PNG
+                    if (PNG_MIMETYPE.equalsIgnoreCase(file.getMimeType())) {
+                        bitmap = handlePNG(bitmap, pxW, pxH);
+                    }
+
+                    thumbnail = addThumbnailToCache(imageKey, bitmap, file.getStoragePath(), pxW, pxH);
+
+                    file.setUpdateThumbnailNeeded(false);
+                }
+
+            } else {
+                // Download thumbnail from server
+                if (mClient != null) {
+                    GetMethod getMethod = null;
+                    try {
+                        String uri = mClient.getBaseUri() + "/index.php/core/preview.png?file="
+                            + URLEncoder.encode(file.getRemotePath(), Charsets.UTF_8.name())
+                            + "&x=" + (pxW / 2) + "&y=" + (pxH / 2) + "&a=1&mode=cover&forceIcon=0";
+                        Log_OC.d(TAG, "generate resized image: " + file.getFileName() + " URI: " + uri);
+                        getMethod = new GetMethod(uri);
+
+                        int status = mClient.executeMethod(getMethod);
+                        if (status == HttpStatus.SC_OK) {
+                            InputStream inputStream = getMethod.getResponseBodyAsStream();
+                            thumbnail = BitmapFactory.decodeStream(inputStream);
+                        } else {
+                            mClient.exhaustResponse(getMethod.getResponseBodyAsStream());
+                        }
+
+                        // Handle PNG
+                        if (thumbnail != null && PNG_MIMETYPE.equalsIgnoreCase(file.getMimeType())) {
+                            thumbnail = handlePNG(thumbnail, thumbnail.getWidth(), thumbnail.getHeight());
+                        }
+
+                        // Add thumbnail to cache
+                        if (thumbnail != null) {
+                            Log_OC.d(TAG, "add resized image to cache: " + file.getFileName());
+                            addBitmapToCache(imageKey, thumbnail);
+                        }
+
+                    } catch (Exception e) {
+                        Log_OC.d(TAG, e.getMessage(), e);
+                    } finally {
+                        if (getMethod != null) {
+                            getMethod.releaseConnection();
+                        }
+                    }
+                }
+            }
+
+            // resized dimensions
+            if (thumbnail != null) {
+                file.setImageDimension(new ImageDimension(thumbnail.getWidth(), thumbnail.getHeight()));
+                storageManager.saveFile(file);
+            }
+        }
+
+        return thumbnail;
     }
 }

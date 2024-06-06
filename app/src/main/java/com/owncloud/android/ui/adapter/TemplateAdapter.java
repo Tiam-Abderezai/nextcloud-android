@@ -1,27 +1,11 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * @author Chris Narkiewicz
- *
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter;
 
 import android.content.Context;
@@ -33,14 +17,12 @@ import android.view.ViewGroup;
 import com.bumptech.glide.Glide;
 import com.nextcloud.client.account.CurrentAccountProvider;
 import com.nextcloud.client.network.ClientFactory;
-import com.owncloud.android.R;
 import com.owncloud.android.databinding.TemplateButtonBinding;
 import com.owncloud.android.lib.common.Template;
 import com.owncloud.android.lib.common.TemplateList;
 import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.glide.CustomGlideStreamLoader;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.ArrayList;
 
@@ -59,10 +41,7 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
     private ClientFactory clientFactory;
     private String mimetype;
     private Template selectedTemplate;
-    private final int colorSelected;
-    private final int colorUnselected;
-    private final ThemeColorUtils themeColorUtils;
-    private final ThemeDrawableUtils themeDrawableUtils;
+    private final ViewThemeUtils viewThemeUtils;
 
     public TemplateAdapter(
         String mimetype,
@@ -70,18 +49,14 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
         Context context,
         CurrentAccountProvider currentAccountProvider,
         ClientFactory clientFactory,
-        ThemeColorUtils themeColorUtils,
-        ThemeDrawableUtils themeDrawableUtils
+        ViewThemeUtils viewThemeUtils
                           ) {
         this.mimetype = mimetype;
         this.clickListener = clickListener;
         this.context = context;
         this.currentAccountProvider = currentAccountProvider;
         this.clientFactory = clientFactory;
-        colorSelected = themeColorUtils.primaryColor(context, true);
-        colorUnselected = context.getResources().getColor(R.color.grey_200);
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     @NonNull
@@ -96,7 +71,7 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        holder.setData(new ArrayList<>(templateList.getTemplates().values()).get(position), themeColorUtils, themeDrawableUtils);
+        holder.setData(new ArrayList<>(templateList.getTemplates().values()).get(position));
     }
 
     public void setTemplateList(TemplateList templateList) {
@@ -125,6 +100,7 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
         public ViewHolder(@NonNull TemplateButtonBinding binding) {
             super(binding.getRoot());
             this.binding = binding;
+            viewThemeUtils.files.themeTemplateCardView(this.binding.templateContainer);
             itemView.setOnClickListener(this);
         }
 
@@ -135,15 +111,13 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
             }
         }
 
-        public void setData(Template template, ThemeColorUtils themeColorUtils, ThemeDrawableUtils themeDrawableUtils) {
+        public void setData(Template template) {
             this.template = template;
 
             Drawable placeholder = MimeTypeUtil.getFileTypeIcon(mimetype,
                                                                 template.getTitle(),
-                                                                currentAccountProvider.getUser(),
                                                                 context,
-                                                                themeColorUtils,
-                                                                themeDrawableUtils);
+                                                                viewThemeUtils);
 
             Glide.with(context).using(new CustomGlideStreamLoader(currentAccountProvider.getUser(), clientFactory))
                 .load(template.getPreview())
@@ -152,12 +126,7 @@ public class TemplateAdapter extends RecyclerView.Adapter<TemplateAdapter.ViewHo
                 .into(binding.template);
 
             binding.templateName.setText(template.getTitle());
-
-            if (template == selectedTemplate) {
-                binding.templateContainer.setStrokeColor(colorSelected);
-            } else {
-                binding.templateContainer.setStrokeColor(colorUnselected);
-            }
+            binding.templateContainer.setChecked(template == selectedTemplate);
         }
     }
 

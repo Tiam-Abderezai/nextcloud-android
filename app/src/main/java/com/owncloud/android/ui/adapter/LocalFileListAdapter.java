@@ -5,18 +5,7 @@
  * Copyright (C) 2018 Tobias Kaminsky
  * Copyright (C) 2018 Nextcloud
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.adapter;
 
@@ -32,6 +21,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.nextcloud.android.common.ui.theme.utils.ColorRole;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.ThumbnailsCacheManager;
@@ -40,8 +30,7 @@ import com.owncloud.android.ui.interfaces.LocalFileListFragmentInterface;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.FileSortOrder;
 import com.owncloud.android.utils.MimeTypeUtil;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -55,6 +44,7 @@ import java.util.concurrent.Executors;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 /**
@@ -73,8 +63,8 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
     private boolean gridView = false;
     private LocalFileListFragmentInterface localFileListFragmentInterface;
     private Set<File> checkedFiles;
-    private ThemeColorUtils themeColorUtils;
-    private ThemeDrawableUtils themeDrawableUtils;
+    private ViewThemeUtils viewThemeUtils;
+    private boolean isWithinEncryptedFolder;
 
     private static final int VIEWTYPE_ITEM = 0;
     private static final int VIEWTYPE_FOOTER = 1;
@@ -85,15 +75,15 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
                                 LocalFileListFragmentInterface localFileListFragmentInterface,
                                 AppPreferences preferences,
                                 Context context,
-                                ThemeColorUtils themeColorUtils,
-                                ThemeDrawableUtils themeDrawableUtils) {
+                                final ViewThemeUtils viewThemeUtils,
+                                boolean isWithinEncryptedFolder) {
         this.preferences = preferences;
         mContext = context;
         mLocalFolderPicker = localFolderPickerMode;
         this.localFileListFragmentInterface = localFileListFragmentInterface;
         checkedFiles = new HashSet<>();
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
+        this.isWithinEncryptedFolder = isWithinEncryptedFolder;
 
         swapDirectory(directory);
     }
@@ -120,7 +110,15 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
     }
 
     public void addAllFilesToCheckedFiles() {
-        checkedFiles.addAll(mFiles);
+        if (isWithinEncryptedFolder) {
+            for (File file : mFilesAll) {
+                if (file.isFile()) {
+                    checkedFiles.add(file);
+                }
+            }
+        } else {
+            checkedFiles.addAll(mFiles);
+        }
     }
 
     public void removeAllFilesFromCheckedFiles() {
@@ -179,11 +177,10 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
                 } else {
                     gridViewHolder.checkbox.setVisibility(View.VISIBLE);
                     if (isCheckedFile(file)) {
-                        gridViewHolder.itemLayout.setBackgroundColor(mContext.getResources()
-                                                                         .getColor(R.color.selected_item_background));
+                        gridViewHolder.itemLayout.setBackgroundColor(ContextCompat.getColor(mContext, R.color.selected_item_background));
+
                         gridViewHolder.checkbox.setImageDrawable(
-                            themeDrawableUtils.tintDrawable(R.drawable.ic_checkbox_marked,
-                                                            themeColorUtils.primaryColor(mContext)));
+                            viewThemeUtils.platform.tintDrawable(mContext, R.drawable.ic_checkbox_marked, ColorRole.PRIMARY));
                     } else {
                         gridViewHolder.itemLayout.setBackgroundColor(mContext.getResources().getColor(R.color.bg_default));
                         gridViewHolder.checkbox.setImageResource(R.drawable.ic_checkbox_blank_outline);
@@ -193,7 +190,7 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
                 }
 
                 gridViewHolder.thumbnail.setTag(file.hashCode());
-                setThumbnail(file, gridViewHolder.thumbnail, mContext, themeColorUtils, themeDrawableUtils);
+                setThumbnail(file, gridViewHolder.thumbnail, mContext, viewThemeUtils);
 
                 gridViewHolder.itemLayout.setOnClickListener(v -> localFileListFragmentInterface
                     .onItemClicked(finalFile));
@@ -204,6 +201,9 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
                     if (file.isDirectory()) {
                         itemViewHolder.fileSize.setVisibility(View.GONE);
                         itemViewHolder.fileSeparator.setVisibility(View.GONE);
+                        if (isWithinEncryptedFolder) {
+                            itemViewHolder.checkbox.setVisibility(View.GONE);
+                        }
                     } else {
                         itemViewHolder.fileSize.setVisibility(View.VISIBLE);
                         itemViewHolder.fileSeparator.setVisibility(View.VISIBLE);
@@ -231,12 +231,9 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
     public static void setThumbnail(File file,
                                     ImageView thumbnailView,
                                     Context context,
-                                    ThemeColorUtils themeColorUtils,
-                                    ThemeDrawableUtils themeDrawableUtils) {
+                                    ViewThemeUtils viewThemeUtils) {
         if (file.isDirectory()) {
-            thumbnailView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context,
-                                                                             themeColorUtils,
-                                                                             themeDrawableUtils));
+            thumbnailView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context, viewThemeUtils));
         } else {
             thumbnailView.setImageResource(R.drawable.file);
 
@@ -282,8 +279,7 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
                 thumbnailView.setImageDrawable(MimeTypeUtil.getFileTypeIcon(null,
                                                                             file.getName(),
                                                                             context,
-                                                                            themeColorUtils,
-                                                                            themeDrawableUtils));
+                                                                            viewThemeUtils));
             }
         }
     }
@@ -504,6 +500,7 @@ public class LocalFileListAdapter extends RecyclerView.Adapter<RecyclerView.View
 
             itemView.findViewById(R.id.sharedAvatars).setVisibility(View.GONE);
             itemView.findViewById(R.id.overflow_menu).setVisibility(View.GONE);
+            itemView.findViewById(R.id.tagsGroup).setVisibility(View.GONE);
         }
     }
 

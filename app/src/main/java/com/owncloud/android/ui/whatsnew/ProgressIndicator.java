@@ -1,29 +1,17 @@
-/**
- *   Nextcloud Android client application
+/*
+ * Nextcloud Android client application
  *
  *   @author Bartosz Przybylski
  *   Copyright (C) 2015 Bartosz Przybylski
  *   Copyright (C) 2015 ownCloud Inc.
  *   Copyright (C) 2016 Nextcloud.
  *
- *   This program is free software; you can redistribute it and/or
- *   modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- *   License as published by the Free Software Foundation; either
- *   version 3 of the License, or any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- *   You should have received a copy of the GNU Affero General Public
- *   License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.whatsnew;
 
 import android.content.Context;
-import android.graphics.PorterDuff;
 import android.graphics.drawable.TransitionDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
@@ -32,7 +20,12 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 
+import com.nextcloud.android.common.ui.theme.utils.ColorRole;
+import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
+
+import javax.inject.Inject;
 
 import androidx.core.content.res.ResourcesCompat;
 
@@ -45,6 +38,9 @@ public class ProgressIndicator extends FrameLayout {
 
     protected int mNumberOfSteps = -1;
     protected int mCurrentStep = -1;
+
+    @Inject ViewThemeUtils.Factory viewThemeUtilsFactory;
+    private ViewThemeUtils viewThemeUtils;
 
     public ProgressIndicator(Context context) {
         super(context);
@@ -61,20 +57,18 @@ public class ProgressIndicator extends FrameLayout {
         setup();
     }
 
+
     public boolean hasNextStep() {
         return mNumberOfSteps > mCurrentStep;
     }
 
     public void setNumberOfSteps(int steps) {
-        int fontColor = getResources().getColor(R.color.login_text_color);
         mNumberOfSteps = steps;
         mDotsContainer.removeAllViews();
         for (int i = 0; i < steps; ++i) {
             ImageView iv = new ImageView(getContext());
-            iv.setImageDrawable(ResourcesCompat.getDrawable(getContext().getResources(),
-                                                            R.drawable.whats_new_progress_transition,
-                                                            null));
-            iv.setColorFilter(fontColor, PorterDuff.Mode.SRC_ATOP);
+            iv.setImageDrawable(ResourcesCompat.getDrawable(getContext().getResources(), R.drawable.whats_new_progress_transition, null));
+            viewThemeUtils.platform.colorImageView(iv, ColorRole.ON_PRIMARY);
             mDotsContainer.addView(iv);
         }
         animateToStep(1);
@@ -86,18 +80,20 @@ public class ProgressIndicator extends FrameLayout {
         }
 
         if (mCurrentStep != -1) {
-            ImageView prevDot = (ImageView) mDotsContainer.getChildAt(mCurrentStep-1);
-            TransitionDrawable transition = (TransitionDrawable)prevDot.getDrawable();
+            ImageView prevDot = (ImageView) mDotsContainer.getChildAt(mCurrentStep - 1);
+            TransitionDrawable transition = (TransitionDrawable) prevDot.getDrawable();
             transition.resetTransition();
         }
 
         mCurrentStep = step;
-        ImageView dot = (ImageView)mDotsContainer.getChildAt(step-1);
-        TransitionDrawable transition = (TransitionDrawable)dot.getDrawable();
+        ImageView dot = (ImageView) mDotsContainer.getChildAt(step - 1);
+        TransitionDrawable transition = (TransitionDrawable) dot.getDrawable();
         transition.startTransition(500);
     }
 
     private void setup() {
+        MainApp.getAppComponent().inject(this);
+        viewThemeUtils = viewThemeUtilsFactory.withPrimaryAsBackground();
         mDotsContainer = new LinearLayout(getContext());
         mDotsContainer.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams params = generateDefaultLayoutParams();

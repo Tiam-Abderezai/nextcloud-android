@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client.media
 
@@ -23,6 +10,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.widget.MediaController
@@ -30,10 +18,13 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.nextcloud.client.account.User
 import com.nextcloud.client.network.ClientFactory
+import com.nextcloud.utils.ForegroundServiceHelper
+import com.nextcloud.utils.extensions.getParcelableArgument
 import com.owncloud.android.R
+import com.owncloud.android.datamodel.ForegroundServiceType
 import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.ui.notifications.NotificationUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import dagger.android.AndroidInjection
 import java.util.Locale
 import javax.inject.Inject
@@ -84,13 +75,13 @@ class PlayerService : Service() {
     }
 
     @Inject
-    protected lateinit var audioManager: AudioManager
+    lateinit var audioManager: AudioManager
 
     @Inject
-    protected lateinit var clientFactory: ClientFactory
+    lateinit var clientFactory: ClientFactory
 
     @Inject
-    protected lateinit var themeColorUtils: ThemeColorUtils
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     private lateinit var player: Player
     private lateinit var notificationBuilder: NotificationCompat.Builder
@@ -101,7 +92,7 @@ class PlayerService : Service() {
         AndroidInjection.inject(this)
         player = Player(applicationContext, clientFactory, playerListener, audioManager)
         notificationBuilder = NotificationCompat.Builder(this)
-        notificationBuilder.color = themeColorUtils.primaryColor(this)
+        viewThemeUtils.androidx.themeNotificationCompatBuilder(this, notificationBuilder)
 
         val stop = Intent(this, PlayerService::class.java)
         stop.action = ACTION_STOP
@@ -141,8 +132,8 @@ class PlayerService : Service() {
     }
 
     private fun onActionPlay(intent: Intent) {
-        val user: User = intent.getParcelableExtra(EXTRA_USER)!!
-        val file: OCFile = intent.getParcelableExtra(EXTRA_FILE)!!
+        val user: User = intent.getParcelableArgument(EXTRA_USER, User::class.java)!!
+        val file: OCFile = intent.getParcelableArgument(EXTRA_FILE, OCFile::class.java)!!
         val startPos = intent.getLongExtra(EXTRA_START_POSITION_MS, 0)
         val autoPlay = intent.getBooleanExtra(EXTRA_AUTO_PLAY, true)
         val item = PlaylistItem(file = file, startPositionMs = startPos, autoPlay = autoPlay, user = user)
@@ -154,7 +145,8 @@ class PlayerService : Service() {
     }
 
     private fun onActionStopFile(args: Bundle?) {
-        val file: OCFile = args?.getParcelable(EXTRA_FILE) ?: throw IllegalArgumentException("Missing file argument")
+        val file: OCFile = args?.getParcelableArgument(EXTRA_FILE, OCFile::class.java)
+            ?: throw IllegalArgumentException("Missing file argument")
         stopServiceAndRemoveNotification(file)
     }
 
@@ -167,11 +159,17 @@ class PlayerService : Service() {
         notificationBuilder.setContentTitle(ticker)
         notificationBuilder.setContentText(content)
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationBuilder.setChannelId(NotificationUtils.NOTIFICATION_CHANNEL_MEDIA)
         }
 
-        startForeground(R.string.media_notif_ticker, notificationBuilder.build())
+        ForegroundServiceHelper.startService(
+            this,
+            R.string.media_notif_ticker,
+            notificationBuilder.build(),
+            ForegroundServiceType.MediaPlayback
+        )
+
         isRunning = true
     }
 

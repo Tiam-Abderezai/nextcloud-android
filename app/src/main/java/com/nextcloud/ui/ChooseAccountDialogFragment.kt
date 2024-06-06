@@ -4,18 +4,7 @@
  * @author Infomaniak Network SA
  * Copyright (C) 2020 Infomaniak Network SA
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.nextcloud.ui
@@ -29,13 +18,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.nextcloud.client.account.User
 import com.nextcloud.client.account.UserAccountManager
 import com.nextcloud.client.di.Injectable
 import com.nextcloud.client.network.ClientFactory
+import com.nextcloud.utils.extensions.getParcelableArgument
 import com.owncloud.android.R
 import com.owncloud.android.databinding.DialogChooseAccountBinding
 import com.owncloud.android.datamodel.FileDataStorageManager
@@ -48,8 +37,7 @@ import com.owncloud.android.ui.adapter.UserListItem
 import com.owncloud.android.ui.asynctasks.RetrieveStatusAsyncTask
 import com.owncloud.android.utils.DisplayUtils
 import com.owncloud.android.utils.DisplayUtils.AvatarGenerationListener
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import javax.inject.Inject
 
 private const val ARG_CURRENT_USER_PARAM = "currentUser"
@@ -73,15 +61,12 @@ class ChooseAccountDialogFragment :
     lateinit var clientFactory: ClientFactory
 
     @Inject
-    lateinit var themeColorUtils: ThemeColorUtils
-
-    @Inject
-    lateinit var themeDrawableUtils: ThemeDrawableUtils
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
-            currentUser = it.getParcelable(ARG_CURRENT_USER_PARAM)
+            currentUser = it.getParcelableArgument(ARG_CURRENT_USER_PARAM, User::class.java)
         }
     }
 
@@ -90,9 +75,12 @@ class ChooseAccountDialogFragment :
         _binding = DialogChooseAccountBinding.inflate(layoutInflater)
         dialogView = binding.root
 
-        return MaterialAlertDialogBuilder(requireContext())
+        val builder = MaterialAlertDialogBuilder(requireContext())
             .setView(binding.root)
-            .create()
+
+        viewThemeUtils.dialog.colorMaterialAlertDialogBackground(binding.statusView.context, builder)
+
+        return builder.create()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -117,10 +105,7 @@ class ChooseAccountDialogFragment :
             binding.currentAccount.account.text = user.accountName
 
             // Defining user right indicator
-            val icon = themeDrawableUtils.tintDrawable(
-                ContextCompat.getDrawable(requireContext(), R.drawable.ic_check_circle),
-                themeColorUtils.primaryColor(requireContext(), true)
-            )
+            val icon = viewThemeUtils.platform.tintPrimaryDrawable(requireContext(), R.drawable.ic_check_circle)
             binding.currentAccount.accountMenu.setImageDrawable(icon)
 
             // Creating adapter for accounts list
@@ -131,9 +116,14 @@ class ChooseAccountDialogFragment :
                 this,
                 false,
                 false,
-                themeColorUtils,
-                themeDrawableUtils
+                true,
+                viewThemeUtils
             )
+
+            // hide "add account" when no multi account
+            if (!resources.getBoolean(R.bool.multiaccount_support)) {
+                binding.addAccount.visibility = View.GONE
+            }
 
             binding.accountsList.adapter = adapter
 
@@ -164,6 +154,20 @@ class ChooseAccountDialogFragment :
 
             RetrieveStatusAsyncTask(user, this, clientFactory).execute()
         }
+
+        themeViews()
+    }
+
+    private fun themeViews() {
+        viewThemeUtils.platform.themeDialogDivider(binding.separatorLine)
+        viewThemeUtils.platform.themeDialog(binding.root)
+
+        viewThemeUtils.material.colorMaterialTextButton(binding.setStatus)
+        viewThemeUtils.dialog.colorDialogMenuText(binding.setStatus)
+        viewThemeUtils.material.colorMaterialTextButton(binding.addAccount)
+        viewThemeUtils.dialog.colorDialogMenuText(binding.addAccount)
+        viewThemeUtils.material.colorMaterialTextButton(binding.manageAccounts)
+        viewThemeUtils.dialog.colorDialogMenuText(binding.manageAccounts)
     }
 
     private fun getAccountListItems(): List<UserListItem> {

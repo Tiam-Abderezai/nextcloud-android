@@ -1,59 +1,57 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author David A. Velasco
- * @author Chris Narkiewicz Chris Narkiewicz
- * Copyright (C) 2016 ownCloud Inc.
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2016 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.nextcloud.client.preferences;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 
-import com.nextcloud.client.account.CurrentAccountProvider;
+import com.google.common.reflect.TypeToken;
+import com.google.gson.Gson;
+import com.nextcloud.appReview.AppReviewShownModel;
 import com.nextcloud.client.account.User;
+import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.account.UserAccountManagerImpl;
+import com.nextcloud.client.jobs.LogEntry;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.ui.activity.PassCodeActivity;
 import com.owncloud.android.ui.activity.SettingsActivity;
 import com.owncloud.android.utils.FileSortOrder;
 
+import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import static com.owncloud.android.ui.fragment.OCFileListFragment.FOLDER_LAYOUT_LIST;
+import static java.util.Collections.emptyList;
 
 /**
  * Implementation of application-wide preferences using {@link SharedPreferences}.
- *
- * Users should not use this class directly. Please use {@link AppPreferences} interface
- * instead.
+ * <p>
+ * Users should not use this class directly. Please use {@link AppPreferences} interface instead.
  */
 public final class AppPreferencesImpl implements AppPreferences {
 
     /**
-     * Constant to access value of last path selected by the user to upload a file shared from other app.
-     * Value handled by the app without direct access in the UI.
+     * Constant to access value of last path selected by the user to upload a file shared from other app. Value handled
+     * by the app without direct access in the UI.
      */
     public static final String AUTO_PREF__LAST_SEEN_VERSION_CODE = "lastSeenVersionCode";
     public static final String STORAGE_PATH = "storage_path";
@@ -71,6 +69,7 @@ public final class AppPreferencesImpl implements AppPreferences {
     private static final String PREF__INSTANT_UPLOADING = "instant_uploading";
     private static final String PREF__INSTANT_VIDEO_UPLOADING = "instant_video_uploading";
     private static final String PREF__SHOW_HIDDEN_FILES = "show_hidden_files_pref";
+    private static final String PREF__SHOW_ECOSYSTEM_APPS = "show_ecosystem_apps";
     private static final String PREF__LEGACY_CLEAN = "legacyClean";
     private static final String PREF__KEYS_MIGRATION = "keysMigration";
     private static final String PREF__FIX_STORAGE_PATH = "storagePathFix";
@@ -95,13 +94,19 @@ public final class AppPreferencesImpl implements AppPreferences {
     private static final String PREF__CALENDAR_AUTOMATIC_BACKUP = "calendar_automatic_backup";
     private static final String PREF__CALENDAR_LAST_BACKUP = "calendar_last_backup";
 
+    private static final String PREF__GLOBAL_PAUSE_STATE = "global_pause_state";
+
     private static final String PREF__PDF_ZOOM_TIP_SHOWN = "pdf_zoom_tip_shown";
+    private static final String PREF__MEDIA_FOLDER_LAST_PATH = "media_folder_last_path";
 
     private static final String PREF__STORAGE_PERMISSION_REQUESTED = "storage_permission_requested";
+    private static final String PREF__IN_APP_REVIEW_DATA = "in_app_review_data";
+
+    private static final String LOG_ENTRY = "log_entry";
 
     private final Context context;
     private final SharedPreferences preferences;
-    private final CurrentAccountProvider currentAccountProvider;
+    private final UserAccountManager userAccountManager;
     private final ListenerRegistry listeners;
 
     /**
@@ -123,7 +128,7 @@ public final class AppPreferencesImpl implements AppPreferences {
             }
         }
 
-        void remove(@Nullable  final Listener listener) {
+        void remove(@Nullable final Listener listener) {
             if (listener != null) {
                 listeners.remove(listener);
             }
@@ -133,7 +138,7 @@ public final class AppPreferencesImpl implements AppPreferences {
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             if (PREF__DARK_THEME.equals(key)) {
                 DarkMode mode = preferences.getDarkThemeMode();
-                for(Listener l : listeners) {
+                for (Listener l : listeners) {
                     l.onDarkThemeModeChanged(mode);
                 }
             }
@@ -141,9 +146,9 @@ public final class AppPreferencesImpl implements AppPreferences {
     }
 
     /**
-     * This is a temporary workaround to access app preferences in places that cannot use
-     * dependency injection yet. Use injected component via {@link AppPreferences} interface.
-     *
+     * This is a temporary workaround to access app preferences in places that cannot use dependency injection yet. Use
+     * injected component via {@link AppPreferences} interface.
+     * <p>
      * WARNING: this creates new instance! it does not return app-wide singleton
      *
      * @param context Context used to create shared preferences
@@ -151,15 +156,15 @@ public final class AppPreferencesImpl implements AppPreferences {
      */
     @Deprecated
     public static AppPreferences fromContext(Context context) {
-        final CurrentAccountProvider currentAccountProvider = UserAccountManagerImpl.fromContext(context);
+        final UserAccountManager userAccountManager = UserAccountManagerImpl.fromContext(context);
         final SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
-        return new AppPreferencesImpl(context, prefs, currentAccountProvider);
+        return new AppPreferencesImpl(context, prefs, userAccountManager);
     }
 
-    AppPreferencesImpl(Context appContext, SharedPreferences preferences, CurrentAccountProvider currentAccountProvider) {
+    AppPreferencesImpl(Context appContext, SharedPreferences preferences, UserAccountManager userAccountManager) {
         this.context = appContext;
         this.preferences = preferences;
-        this.currentAccountProvider = currentAccountProvider;
+        this.userAccountManager = userAccountManager;
         this.listeners = new ListenerRegistry(this);
         this.preferences.registerOnSharedPreferenceChangeListener(listeners);
     }
@@ -212,6 +217,16 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public void setShowHiddenFilesEnabled(boolean enabled) {
         preferences.edit().putBoolean(PREF__SHOW_HIDDEN_FILES, enabled).apply();
+    }
+
+    @Override
+    public boolean isShowEcosystemApps() {
+        return preferences.getBoolean(PREF__SHOW_ECOSYSTEM_APPS, true);
+    }
+
+    @Override
+    public void setShowEcosystemApps(boolean enabled) {
+        preferences.edit().putBoolean(PREF__SHOW_ECOSYSTEM_APPS, enabled).apply();
     }
 
     @Override
@@ -277,7 +292,7 @@ public final class AppPreferencesImpl implements AppPreferences {
 
     @Override
     public String[] getPassCode() {
-        return new String[] {
+        return new String[]{
             preferences.getString(PassCodeActivity.PREFERENCE_PASSCODE_D1, null),
             preferences.getString(PassCodeActivity.PREFERENCE_PASSCODE_D2, null),
             preferences.getString(PassCodeActivity.PREFERENCE_PASSCODE_D3, null),
@@ -293,7 +308,7 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public String getFolderLayout(OCFile folder) {
         return getFolderPreference(context,
-                                   currentAccountProvider.getUser(),
+                                   userAccountManager.getUser(),
                                    PREF__FOLDER_LAYOUT,
                                    folder,
                                    FOLDER_LAYOUT_LIST);
@@ -302,7 +317,7 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public void setFolderLayout(@Nullable OCFile folder, String layoutName) {
         setFolderPreference(context,
-                            currentAccountProvider.getUser(),
+                            userAccountManager.getUser(),
                             PREF__FOLDER_LAYOUT,
                             folder,
                             layoutName);
@@ -311,7 +326,7 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public FileSortOrder getSortOrderByFolder(OCFile folder) {
         return FileSortOrder.sortOrders.get(getFolderPreference(context,
-                                                                currentAccountProvider.getUser(),
+                                                                userAccountManager.getUser(),
                                                                 PREF__FOLDER_SORT_ORDER,
                                                                 folder,
                                                                 FileSortOrder.sort_a_to_z.name));
@@ -320,7 +335,7 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public void setSortOrder(@Nullable OCFile folder, FileSortOrder sortOrder) {
         setFolderPreference(context,
-                            currentAccountProvider.getUser(),
+                            userAccountManager.getUser(),
                             PREF__FOLDER_SORT_ORDER,
                             folder,
                             sortOrder.name);
@@ -333,12 +348,12 @@ public final class AppPreferencesImpl implements AppPreferences {
 
     @Override
     public FileSortOrder getSortOrderByType(FileSortOrder.Type type, FileSortOrder defaultOrder) {
-        User user = currentAccountProvider.getUser();
+        User user = userAccountManager.getUser();
         if (user.isAnonymous()) {
             return defaultOrder;
         }
 
-        ArbitraryDataProvider dataProvider = new ArbitraryDataProvider(context.getContentResolver());
+        ArbitraryDataProvider dataProvider = new ArbitraryDataProviderImpl(context);
 
         String value = dataProvider.getValue(user.getAccountName(), PREF__FOLDER_SORT_ORDER + "_" + type);
 
@@ -347,8 +362,8 @@ public final class AppPreferencesImpl implements AppPreferences {
 
     @Override
     public void setSortOrder(FileSortOrder.Type type, FileSortOrder sortOrder) {
-        User user = currentAccountProvider.getUser();
-        ArbitraryDataProvider dataProvider = new ArbitraryDataProvider(context.getContentResolver());
+        User user = userAccountManager.getUser();
+        ArbitraryDataProvider dataProvider = new ArbitraryDataProviderImpl(context);
         dataProvider.storeOrUpdateKeyValue(user.getAccountName(), PREF__FOLDER_SORT_ORDER + "_" + type, sortOrder.name);
     }
 
@@ -418,6 +433,18 @@ public final class AppPreferencesImpl implements AppPreferences {
     }
 
     @Override
+    public boolean isDarkModeEnabled() {
+        DarkMode mode = getDarkThemeMode();
+
+        if (mode == DarkMode.SYSTEM) {
+            int currentNightMode = context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            return currentNightMode == Configuration.UI_MODE_NIGHT_YES;
+        }
+
+        return mode == DarkMode.DARK;
+    }
+
+    @Override
     public void setDarkThemeMode(DarkMode mode) {
         preferences.edit().putString(PREF__DARK_THEME, mode.name()).apply();
     }
@@ -469,6 +496,22 @@ public final class AppPreferencesImpl implements AppPreferences {
     }
 
     @Override
+    public void saveLogEntry(List<LogEntry> logEntryList) {
+        Gson gson = new Gson();
+        String json = gson.toJson(logEntryList);
+        preferences.edit().putString(LOG_ENTRY, json).apply();
+    }
+
+    @Override
+    public List<LogEntry> readLogEntry() {
+        String json = preferences.getString(LOG_ENTRY, null);
+        if (json == null) return emptyList();
+        Gson gson = new Gson();
+        Type listType = new TypeToken<List<LogEntry>>() {}.getType();
+        return gson.fromJson(json, listType);
+    }
+
+    @Override
     public void setLastSeenVersionCode(int versionCode) {
         preferences.edit().putInt(AUTO_PREF__LAST_SEEN_VERSION_CODE, versionCode).apply();
     }
@@ -506,19 +549,19 @@ public final class AppPreferencesImpl implements AppPreferences {
     @Override
     public void removeLegacyPreferences() {
         preferences.edit()
-                .remove("instant_uploading")
-                .remove("instant_video_uploading")
-                .remove("instant_upload_path")
-                .remove("instant_upload_path_use_subfolders")
-                .remove("instant_upload_on_wifi")
-                .remove("instant_upload_on_charging")
-                .remove("instant_video_upload_path")
-                .remove("instant_video_upload_path_use_subfolders")
-                .remove("instant_video_upload_on_wifi")
-                .remove("instant_video_uploading")
-                .remove("instant_video_upload_on_charging")
-                .remove("prefs_instant_behaviour")
-                .apply();
+            .remove("instant_uploading")
+            .remove("instant_video_uploading")
+            .remove("instant_upload_path")
+            .remove("instant_upload_path_use_subfolders")
+            .remove("instant_upload_on_wifi")
+            .remove("instant_upload_on_charging")
+            .remove("instant_video_upload_path")
+            .remove("instant_video_upload_path_use_subfolders")
+            .remove("instant_video_upload_on_wifi")
+            .remove("instant_video_uploading")
+            .remove("instant_video_upload_on_charging")
+            .remove("prefs_instant_behaviour")
+            .apply();
     }
 
     @Override
@@ -588,13 +631,12 @@ public final class AppPreferencesImpl implements AppPreferences {
     }
 
     /**
-     * Get preference value for a folder.
-     * If folder is not set itself, it finds an ancestor that is set.
+     * Get preference value for a folder. If folder is not set itself, it finds an ancestor that is set.
      *
-     * @param context Context object.
+     * @param context        Context object.
      * @param preferenceName Name of the preference to lookup.
-     * @param folder Folder.
-     * @param defaultValue Fallback value in case no ancestor is set.
+     * @param folder         Folder.
+     * @param defaultValue   Fallback value in case no ancestor is set.
      * @return Preference value
      */
     private static String getFolderPreference(final Context context,
@@ -606,7 +648,7 @@ public final class AppPreferencesImpl implements AppPreferences {
             return defaultValue;
         }
 
-        ArbitraryDataProvider dataProvider = new ArbitraryDataProvider(context.getContentResolver());
+        ArbitraryDataProvider dataProvider = new ArbitraryDataProviderImpl(context);
         FileDataStorageManager storageManager = new FileDataStorageManager(user, context.getContentResolver());
 
         String value = dataProvider.getValue(user.getAccountName(), getKeyFromFolder(preferenceName, folder));
@@ -621,23 +663,23 @@ public final class AppPreferencesImpl implements AppPreferences {
     /**
      * Set preference value for a folder.
      *
-     * @param context Context object.
+     * @param context        Context object.
      * @param preferenceName Name of the preference to set.
-     * @param folder Folder.
-     * @param value Preference value to set.
+     * @param folder         Folder.
+     * @param value          Preference value to set.
      */
     private static void setFolderPreference(final Context context,
                                             final User user,
                                             final String preferenceName,
                                             @Nullable final OCFile folder,
                                             final String value) {
-        ArbitraryDataProvider dataProvider = new ArbitraryDataProvider(context.getContentResolver());
+        ArbitraryDataProvider dataProvider = new ArbitraryDataProviderImpl(context);
         dataProvider.storeOrUpdateKeyValue(user.getAccountName(), getKeyFromFolder(preferenceName, folder), value);
     }
 
     private static String getKeyFromFolder(String preferenceName, @Nullable OCFile folder) {
         final String folderIdString = String.valueOf(folder != null ? folder.getFileId() :
-            FileDataStorageManager.ROOT_PARENT_ID);
+                                                         FileDataStorageManager.ROOT_PARENT_ID);
 
         return preferenceName + "_" + folderIdString;
     }
@@ -689,6 +731,16 @@ public final class AppPreferencesImpl implements AppPreferences {
     }
 
     @Override
+    public boolean isGlobalUploadPaused() {
+        return preferences.getBoolean(PREF__GLOBAL_PAUSE_STATE,false);
+    }
+
+    @Override
+    public void setGlobalUploadPaused(boolean globalPausedState) {
+        preferences.edit().putBoolean(PREF__GLOBAL_PAUSE_STATE, globalPausedState).apply();
+    }
+
+    @Override
     public void setPdfZoomTipShownCount(int count) {
         preferences.edit().putInt(PREF__PDF_ZOOM_TIP_SHOWN, count).apply();
     }
@@ -711,5 +763,30 @@ public final class AppPreferencesImpl implements AppPreferences {
     @VisibleForTesting
     public int computeBruteForceDelay(int count) {
         return (int) Math.min(count / 3d, 10);
+    }
+    @Override
+    public void setInAppReviewData(@NonNull AppReviewShownModel appReviewShownModel) {
+        Gson gson = new Gson();
+        String json = gson.toJson(appReviewShownModel);
+        preferences.edit().putString(PREF__IN_APP_REVIEW_DATA, json).apply();
+    }
+
+    @Nullable
+    @Override
+    public AppReviewShownModel getInAppReviewData() {
+        Gson gson = new Gson();
+        String json = preferences.getString(PREF__IN_APP_REVIEW_DATA, "");
+        return gson.fromJson(json, AppReviewShownModel.class);
+    }
+
+    @Override
+    public void setLastSelectedMediaFolder(@NonNull String path) {
+        preferences.edit().putString(PREF__MEDIA_FOLDER_LAST_PATH, path).apply();
+    }
+
+    @NonNull
+    @Override
+    public String getLastSelectedMediaFolder() {
+        return preferences.getString(PREF__MEDIA_FOLDER_LAST_PATH, OCFile.ROOT_PATH);
     }
 }

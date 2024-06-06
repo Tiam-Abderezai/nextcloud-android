@@ -1,23 +1,16 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author David A. Velasco
- *   Copyright (C) 2015 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2020-2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Joris Bodin <joris.bodin@infomaniak.com>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2015 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2012 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.ui.activity;
 
 import android.accounts.Account;
@@ -33,15 +26,15 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.Spinner;
 import android.widget.TextView;
 
-import com.google.android.material.button.MaterialButton;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.di.Injectable;
+import com.nextcloud.client.jobs.upload.FileUploadWorker;
 import com.nextcloud.client.preferences.AppPreferences;
+import com.nextcloud.utils.extensions.ActivityExtensionsKt;
 import com.owncloud.android.R;
-import com.owncloud.android.files.services.FileUploader;
+import com.owncloud.android.databinding.UploadFilesLayoutBinding;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.ui.adapter.StoragePathAdapter;
 import com.owncloud.android.ui.asynctasks.CheckAvailableSpaceTask;
@@ -55,7 +48,6 @@ import com.owncloud.android.ui.fragment.LocalFileListFragment;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.FileSortOrder;
 import com.owncloud.android.utils.PermissionUtil;
-import com.owncloud.android.utils.theme.ThemeSnackbarUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -63,6 +55,7 @@ import java.util.List;
 
 import javax.inject.Inject;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 import androidx.appcompat.app.ActionBar;
@@ -75,7 +68,7 @@ import androidx.fragment.app.FragmentTransaction;
 import static com.owncloud.android.ui.activity.FileActivity.EXTRA_USER;
 
 /**
- * Displays local files and let the user choose what of them wants to upload to the current ownCloud account.
+ * Displays local files and let the user choose what of them wants to upload to the current Nextcloud account.
  */
 public class UploadFilesActivity extends DrawerActivity implements LocalFileListFragment.ContainerActivity,
     OnClickListener, ConfirmationDialogFragmentListener, SortingOrderDialogFragment.OnSortingOrderListener,
@@ -92,13 +85,13 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
     public static final int RESULT_OK_AND_DO_NOTHING = 2;
     public static final int RESULT_OK_AND_MOVE = RESULT_FIRST_USER;
     public static final String REQUEST_CODE_KEY = "requestCode";
+    private static final String ENCRYPTED_FOLDER_KEY = "encrypted_folder";
 
     private static final String QUERY_TO_MOVE_DIALOG_TAG = "QUERY_TO_MOVE";
     private static final String TAG = "UploadFilesActivity";
     private static final String WAIT_DIALOG_TAG = "WAIT";
 
     @Inject AppPreferences preferences;
-    @Inject ThemeSnackbarUtils themeSnackbarUtils;
     private Account mAccountOnCreation;
     private ArrayAdapter<String> mDirectories;
     private boolean mLocalFolderPickerMode;
@@ -110,8 +103,8 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
     private LocalStoragePathPickerDialogFragment dialog;
     private Menu mOptionsMenu;
     private SearchView mSearchView;
-    private Spinner mBehaviourSpinner;
-    private MaterialButton uploadButton;
+    private UploadFilesLayoutBinding binding;
+    private boolean isWithinEncryptedFolder = false;
 
 
     @VisibleForTesting
@@ -127,10 +120,14 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
      * @param user        the user for which the upload activity is called
      * @param requestCode If >= 0, this code will be returned in onActivityResult()
      */
-    public static void startUploadActivityForResult(Activity activity, User user, int requestCode) {
+    public static void startUploadActivityForResult(Activity activity,
+                                                    User user,
+                                                    int requestCode,
+                                                    boolean isWithinEncryptedFolder) {
         Intent action = new Intent(activity, UploadFilesActivity.class);
         action.putExtra(EXTRA_USER, user);
         action.putExtra(REQUEST_CODE_KEY, requestCode);
+        action.putExtra(ENCRYPTED_FOLDER_KEY, isWithinEncryptedFolder);
         activity.startActivityForResult(action, requestCode);
     }
 
@@ -144,12 +141,14 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
         if (extras != null) {
             mLocalFolderPickerMode = extras.getBoolean(KEY_LOCAL_FOLDER_PICKER_MODE, false);
             requestCode = (int) extras.get(REQUEST_CODE_KEY);
+            isWithinEncryptedFolder = extras.getBoolean(ENCRYPTED_FOLDER_KEY, false);
         }
 
         if (savedInstanceState != null) {
-            mCurrentDir = new File(savedInstanceState.getString(UploadFilesActivity.KEY_DIRECTORY_PATH,
+            mCurrentDir = new File(savedInstanceState.getString(KEY_DIRECTORY_PATH,
                                                                 Environment.getExternalStorageDirectory().getAbsolutePath()));
-            mSelectAll = savedInstanceState.getBoolean(UploadFilesActivity.KEY_ALL_SELECTED, false);
+            mSelectAll = savedInstanceState.getBoolean(KEY_ALL_SELECTED, false);
+            isWithinEncryptedFolder = savedInstanceState.getBoolean(ENCRYPTED_FOLDER_KEY, false);
         } else {
             String lastUploadFrom = preferences.getUploadFromLocalLastPath();
 
@@ -174,30 +173,27 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
         fillDirectoryDropdown();
 
         // Inflate and set the layout view
-        setContentView(R.layout.upload_files_layout);
+        binding = UploadFilesLayoutBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
 
         if (mLocalFolderPickerMode) {
-            findViewById(R.id.upload_options).setVisibility(View.GONE);
-            ((MaterialButton) findViewById(R.id.upload_files_btn_upload)).setText(R.string.uploader_btn_alternative_text);
+            binding.uploadOptions.setVisibility(View.GONE);
+            binding.uploadFilesBtnUpload.setText(R.string.uploader_btn_alternative_text);
         }
 
         mFileListFragment = (LocalFileListFragment) getSupportFragmentManager().findFragmentByTag("local_files_list");
 
         // Set input controllers
-        MaterialButton cancelButton = findViewById(R.id.upload_files_btn_cancel);
-        cancelButton.setTextColor(themeColorUtils.primaryColor(this, true));
-        cancelButton.setOnClickListener(this);
+        viewThemeUtils.material.colorMaterialButtonPrimaryOutlined(binding.uploadFilesBtnCancel);
+        binding.uploadFilesBtnCancel.setOnClickListener(this);
 
-        uploadButton = findViewById(R.id.upload_files_btn_upload);
-        themeButtonUtils.colorPrimaryButton(uploadButton, this, themeColorUtils);
-        uploadButton.setOnClickListener(this);
-        uploadButton.setEnabled(mLocalFolderPickerMode);
+        viewThemeUtils.material.colorMaterialButtonPrimaryFilled(binding.uploadFilesBtnUpload);
+        binding.uploadFilesBtnUpload.setOnClickListener(this);
+        binding.uploadFilesBtnUpload.setEnabled(mLocalFolderPickerMode);
 
         int localBehaviour = preferences.getUploaderBehaviour();
 
         // file upload spinner
-        mBehaviourSpinner = findViewById(R.id.upload_files_spinner_behaviour);
-
         List<String> behaviours = new ArrayList<>();
         behaviours.add(getString(R.string.uploader_upload_files_behaviour_move_to_nextcloud_folder,
                                  themeUtils.getDefaultDisplayNameForRootFolder(this)));
@@ -207,13 +203,13 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
         ArrayAdapter<String> behaviourAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
                                                                    behaviours);
         behaviourAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        mBehaviourSpinner.setAdapter(behaviourAdapter);
-        mBehaviourSpinner.setSelection(localBehaviour);
+        binding.uploadFilesSpinnerBehaviour.setAdapter(behaviourAdapter);
+        binding.uploadFilesSpinnerBehaviour.setSelection(localBehaviour);
 
         // setup the toolbar
         setupToolbar();
-        findViewById(R.id.sort_list_button_group).setVisibility(View.VISIBLE);
-        findViewById(R.id.switch_grid_view_button).setVisibility(View.GONE);
+        binding.uploadFilesToolbar.sortListButtonGroup.setVisibility(View.VISIBLE);
+        binding.uploadFilesToolbar.switchGridViewButton.setVisibility(View.GONE);
 
         // Action bar setup
         ActionBar actionBar = getSupportActionBar();
@@ -223,7 +219,7 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
             actionBar.setDisplayHomeAsUpEnabled(mCurrentDir != null);
             actionBar.setDisplayShowTitleEnabled(false);
 
-            themeToolbarUtils.tintBackButton(actionBar, this);
+            viewThemeUtils.files.themeActionBar(this, actionBar);
         }
 
         showToolbarSpinner();
@@ -257,22 +253,17 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
 
         checkWritableFolder(mCurrentDir);
 
+        getOnBackPressedDispatcher().addCallback(this, onBackPressedCallback);
+
         Log_OC.d(TAG, "onCreate() end");
     }
 
     private void requestPermissions() {
-        PermissionUtil.requestExternalStoragePermission(this, themeSnackbarUtils, true);
+        PermissionUtil.requestExternalStoragePermission(this, viewThemeUtils, true);
     }
 
     public void showToolbarSpinner() {
         mToolbarSpinner.setVisibility(View.VISIBLE);
-    }
-
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        requestPermissions();
     }
 
     private void fillDirectoryDropdown() {
@@ -294,11 +285,10 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
             setSelectAllMenuItem(selectAll, mSelectAll);
         }
 
-        int fontColor = themeColorUtils.appBarPrimaryFontColor(this);
         final MenuItem item = menu.findItem(R.id.action_search);
         mSearchView = (SearchView) MenuItemCompat.getActionView(item);
-        themeToolbarUtils.themeSearchView(mSearchView, this);
-        themeDrawableUtils.tintDrawable(menu.findItem(R.id.action_choose_storage_path).getIcon(), fontColor);
+        viewThemeUtils.androidx.themeToolbarSearchView(mSearchView);
+        viewThemeUtils.platform.tintTextDrawable(this, menu.findItem(R.id.action_choose_storage_path).getIcon());
 
         mSearchView.setOnSearchClickListener(v -> mToolbarSpinner.setVisibility(View.GONE));
 
@@ -376,43 +366,45 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
         }
     }
 
-    @Override
-    public void onBackPressed() {
-        if (isSearchOpen() && mSearchView != null) {
-            mSearchView.setQuery("", false);
-            mFileListFragment.onClose();
-            mSearchView.onActionViewCollapsed();
-            setDrawerIndicatorEnabled(isDrawerIndicatorAvailable());
-        } else {
-            if (mDirectories.getCount() <= SINGLE_DIR) {
-                finish();
-                return;
-            }
+    private final OnBackPressedCallback onBackPressedCallback = new OnBackPressedCallback(true) {
+        @Override
+        public void handleOnBackPressed() {
+            if (isSearchOpen() && mSearchView != null) {
+                mSearchView.setQuery("", false);
+                mFileListFragment.onClose();
+                mSearchView.onActionViewCollapsed();
+                setDrawerIndicatorEnabled(isDrawerIndicatorAvailable());
+            } else {
+                if (mDirectories.getCount() <= SINGLE_DIR) {
+                    finish();
+                    return;
+                }
 
-            File parentFolder = mCurrentDir.getParentFile();
-            if (!parentFolder.canRead()) {
-                checkLocalStoragePathPickerPermission();
-                return;
-            }
+                File parentFolder = mCurrentDir.getParentFile();
+                if (!parentFolder.canRead()) {
+                    checkLocalStoragePathPickerPermission();
+                    return;
+                }
 
-            popDirname();
-            mFileListFragment.onNavigateUp();
-            mCurrentDir = mFileListFragment.getCurrentDirectory();
-            checkWritableFolder(mCurrentDir);
+                popDirname();
+                mFileListFragment.onNavigateUp();
+                mCurrentDir = mFileListFragment.getCurrentDirectory();
+                checkWritableFolder(mCurrentDir);
 
-            if (mCurrentDir.getParentFile() == null) {
-                ActionBar actionBar = getSupportActionBar();
-                if (actionBar != null) {
-                    actionBar.setDisplayHomeAsUpEnabled(false);
+                if (mCurrentDir.getParentFile() == null) {
+                    ActionBar actionBar = getSupportActionBar();
+                    if (actionBar != null) {
+                        actionBar.setDisplayHomeAsUpEnabled(false);
+                    }
+                }
+
+                // invalidate checked state when navigating directories
+                if (!mLocalFolderPickerMode) {
+                    setSelectAllMenuItem(mOptionsMenu.findItem(R.id.action_select_all), false);
                 }
             }
-
-            // invalidate checked state when navigating directories
-            if (!mLocalFolderPickerMode) {
-                setSelectAllMenuItem(mOptionsMenu.findItem(R.id.action_select_all), false);
-            }
         }
-    }
+    };
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
@@ -456,7 +448,7 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
 
     private void updateUploadButtonActive() {
         final boolean anySelected = mFileListFragment.getCheckedFilesCount() > 0;
-        uploadButton.setEnabled(anySelected || mLocalFolderPickerMode);
+        binding.uploadFilesBtnUpload.setEnabled(anySelected || mLocalFolderPickerMode);
     }
 
     private void setSelectAllMenuItem(MenuItem selectAll, boolean checked) {
@@ -466,7 +458,7 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
                 selectAll.setIcon(R.drawable.ic_select_none);
             } else {
                 selectAll.setIcon(
-                    themeDrawableUtils.tintDrawable(R.drawable.ic_select_all, themeColorUtils.primaryColor(this)));
+                    viewThemeUtils.platform.tintPrimaryDrawable(this, R.drawable.ic_select_all));
             }
             updateUploadButtonActive();
         }
@@ -488,7 +480,7 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
      */
     @Override
     public void onCheckAvailableSpaceFinish(boolean hasEnoughSpaceAvailable, String... filesToUpload) {
-        if (mCurrentDialog != null) {
+        if (mCurrentDialog != null && ActivityExtensionsKt.isDialogFragmentReady(this, mCurrentDialog)) {
             mCurrentDialog.dismiss();
             mCurrentDialog = null;
         }
@@ -497,18 +489,17 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
             // return the list of files (success)
             Intent data = new Intent();
 
-            if (requestCode == FileDisplayActivity.REQUEST_CODE__UPLOAD_FROM_CAMERA ||
-                requestCode == FileDisplayActivity.REQUEST_CODE__UPLOAD_SCAN_DOC_FROM_CAMERA) {
+            if (requestCode == FileDisplayActivity.REQUEST_CODE__UPLOAD_FROM_CAMERA) {
                 data.putExtra(EXTRA_CHOSEN_FILES, new String[]{filesToUpload[0]});
                 setResult(RESULT_OK_AND_DELETE, data);
 
-                preferences.setUploaderBehaviour(FileUploader.LOCAL_BEHAVIOUR_DELETE);
+                preferences.setUploaderBehaviour(FileUploadWorker.LOCAL_BEHAVIOUR_DELETE);
             } else {
                 data.putExtra(EXTRA_CHOSEN_FILES, mFileListFragment.getCheckedFilePaths());
                 data.putExtra(LOCAL_BASE_PATH, mCurrentDir.getAbsolutePath());
 
                 // set result code
-                switch (mBehaviourSpinner.getSelectedItemPosition()) {
+                switch (binding.uploadFilesSpinnerBehaviour.getSelectedItemPosition()) {
                     case 0: // move to nextcloud folder
                         setResult(RESULT_OK_AND_MOVE, data);
                         break;
@@ -527,18 +518,16 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
                 }
 
                 // store behaviour
-                preferences.setUploaderBehaviour(mBehaviourSpinner.getSelectedItemPosition());
+                preferences.setUploaderBehaviour(binding.uploadFilesSpinnerBehaviour.getSelectedItemPosition());
             }
 
             finish();
         } else {
             // show a dialog to query the user if wants to move the selected files
             // to the ownCloud folder instead of copying
-            String[] args = {getString(R.string.app_name)};
+            String[] args = { getString(R.string.app_name) };
             ConfirmationDialogFragment dialog = ConfirmationDialogFragment.newInstance(
-                R.string.upload_query_move_foreign_files, args, 0, R.string.common_yes, -1,
-                R.string.common_no
-                                                                                      );
+                R.string.upload_query_move_foreign_files, args, 0, R.string.common_yes,  R.string.common_no, -1);
             dialog.setOnConfirmationListener(this);
             dialog.show(getSupportFragmentManager(), QUERY_TO_MOVE_DIALOG_TAG);
         }
@@ -576,16 +565,16 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
 
     private void checkWritableFolder(File folder) {
         boolean canWriteIntoFolder = folder.canWrite();
-        mBehaviourSpinner.setEnabled(canWriteIntoFolder);
+        binding.uploadFilesSpinnerBehaviour.setEnabled(canWriteIntoFolder);
 
         TextView textView = findViewById(R.id.upload_files_upload_files_behaviour_text);
 
         if (canWriteIntoFolder) {
             textView.setText(getString(R.string.uploader_upload_files_behaviour));
             int localBehaviour = preferences.getUploaderBehaviour();
-            mBehaviourSpinner.setSelection(localBehaviour);
+            binding.uploadFilesSpinnerBehaviour.setSelection(localBehaviour);
         } else {
-            mBehaviourSpinner.setSelection(1);
+            binding.uploadFilesSpinnerBehaviour.setSelection(1);
             textView.setText(new StringBuilder().append(getString(R.string.uploader_upload_files_behaviour))
                                  .append(' ')
                                  .append(getString(R.string.uploader_upload_files_behaviour_not_writable))
@@ -620,6 +609,11 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
         return mLocalFolderPickerMode;
     }
 
+    @Override
+    public boolean isWithinEncryptedFolder() {
+        return isWithinEncryptedFolder;
+    }
+
     /**
      * Performs corresponding action when user presses 'Cancel' or 'Upload' button
      * <p>
@@ -647,7 +641,7 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
                     finish();
                 } else {
                     new CheckAvailableSpaceTask(this, mFileListFragment.getCheckedFilePaths())
-                        .execute(mBehaviourSpinner.getSelectedItemPosition() == 0);
+                        .execute(binding.uploadFilesSpinnerBehaviour.getSelectedItemPosition() == 0);
                 }
             } else {
                 requestPermissions();
@@ -683,12 +677,9 @@ public class UploadFilesActivity extends DrawerActivity implements LocalFileList
     @Override
     protected void onStart() {
         super.onStart();
-        if (getAccount() != null) {
-            if (!mAccountOnCreation.equals(getAccount())) {
-                setResult(RESULT_CANCELED);
-                finish();
-            }
-
+        final Account account = getAccount();
+        if (mAccountOnCreation != null && mAccountOnCreation.equals(account)) {
+            requestPermissions();
         } else {
             setResult(RESULT_CANCELED);
             finish();

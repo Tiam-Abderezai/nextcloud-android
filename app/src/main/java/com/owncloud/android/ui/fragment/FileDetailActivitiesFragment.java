@@ -1,26 +1,10 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Andy Scherzinger
- * @author Chris Narkiewicz
- *
- * Copyright (C) 2018 Andy Scherzinger
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.fragment;
 
 import android.content.ContentResolver;
@@ -38,6 +22,7 @@ import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.di.Injectable;
 import com.nextcloud.client.network.ClientFactory;
 import com.nextcloud.common.NextcloudClient;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.FileDetailsActivitiesFragmentBinding;
 import com.owncloud.android.datamodel.FileDataStorageManager;
@@ -59,11 +44,7 @@ import com.owncloud.android.ui.helpers.FileOperationsHelper;
 import com.owncloud.android.ui.interfaces.ActivityListInterface;
 import com.owncloud.android.ui.interfaces.VersionListInterface;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
-import com.owncloud.android.utils.theme.ThemeLayoutUtils;
-import com.owncloud.android.utils.theme.ThemeTextInputUtils;
-import com.owncloud.android.utils.theme.ThemeToolbarUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.apache.commons.httpclient.HttpStatus;
 import org.greenrobot.eventbus.EventBus;
@@ -104,21 +85,18 @@ public class FileDetailActivitiesFragment extends Fragment implements
 
     private int lastGiven;
     private boolean isLoadingActivities;
+    private boolean isDataFetched = false;
 
     private boolean restoreFileVersionSupported;
     private FileOperationsHelper operationsHelper;
     private VersionListInterface.CommentCallback callback;
 
-    private FileDetailsActivitiesFragmentBinding binding;
+    FileDetailsActivitiesFragmentBinding binding;
 
     @Inject UserAccountManager accountManager;
     @Inject ClientFactory clientFactory;
     @Inject ContentResolver contentResolver;
-    @Inject ThemeColorUtils themeColorUtils;
-    @Inject ThemeLayoutUtils themeLayoutUtils;
-    @Inject ThemeToolbarUtils themeToolbarUtils;
-    @Inject ThemeDrawableUtils themeDrawableUtils;
-    @Inject ThemeTextInputUtils themeTextInputUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
 
     public static FileDetailActivitiesFragment newInstance(OCFile file, User user) {
         FileDetailActivitiesFragment fragment = new FileDetailActivitiesFragment();
@@ -138,12 +116,12 @@ public class FileDetailActivitiesFragment extends Fragment implements
         if (arguments == null) {
             throw new IllegalStateException("arguments are mandatory");
         }
-        file = arguments.getParcelable(ARG_FILE);
-        user = arguments.getParcelable(ARG_USER);
+        file = BundleExtensionsKt.getParcelableArgument(arguments, ARG_FILE, OCFile.class);
+        user = BundleExtensionsKt.getParcelableArgument(arguments, ARG_USER, User.class);
 
         if (savedInstanceState != null) {
-            file = savedInstanceState.getParcelable(ARG_FILE);
-            user = savedInstanceState.getParcelable(ARG_USER);
+            file = BundleExtensionsKt.getParcelableArgument(savedInstanceState, ARG_FILE, OCFile.class);
+            user = BundleExtensionsKt.getParcelableArgument(savedInstanceState, ARG_USER, User.class);
         }
 
         binding = FileDetailsActivitiesFragmentBinding.inflate(inflater, container, false);
@@ -151,9 +129,10 @@ public class FileDetailActivitiesFragment extends Fragment implements
 
         setupView();
 
-        themeLayoutUtils.colorSwipeRefreshLayout(getContext(), binding.swipeContainingEmpty);
-        themeLayoutUtils.colorSwipeRefreshLayout(getContext(), binding.swipeContainingList);
+        viewThemeUtils.androidx.themeSwipeRefreshLayout(binding.swipeContainingEmpty);
+        viewThemeUtils.androidx.themeSwipeRefreshLayout(binding.swipeContainingList);
 
+        isLoadingActivities = true;
         fetchAndSetData(-1);
 
         binding.swipeContainingList.setOnRefreshListener(() -> {
@@ -183,10 +162,7 @@ public class FileDetailActivitiesFragment extends Fragment implements
 
         binding.submitComment.setOnClickListener(v -> submitComment());
 
-        themeTextInputUtils.colorTextInput(binding.commentInputFieldContainer,
-                                           binding.commentInputField,
-                                           themeColorUtils.primaryColor(getContext()),
-                                           themeColorUtils.primaryAccentColor(getContext()));
+        viewThemeUtils.material.colorTextInputLayout(binding.commentInputFieldContainer);
 
         DisplayUtils.setAvatar(user,
                                this,
@@ -207,7 +183,7 @@ public class FileDetailActivitiesFragment extends Fragment implements
 
         String trimmedComment = commentField.toString().trim();
 
-        if (trimmedComment.length() > 0) {
+        if (trimmedComment.length() > 0 && ownCloudClient != null && isDataFetched) {
             new SubmitCommentTask(trimmedComment, file.getLocalId(), callback, ownCloudClient).execute();
         }
     }
@@ -245,8 +221,7 @@ public class FileDetailActivitiesFragment extends Fragment implements
                                                     this,
                                                     this,
                                                     clientFactory,
-                                                    themeColorUtils,
-                                                    themeDrawableUtils
+                                                    viewThemeUtils
         );
         binding.list.setAdapter(adapter);
 
@@ -294,6 +269,10 @@ public class FileDetailActivitiesFragment extends Fragment implements
             activity.runOnUiThread(() -> {
                 setEmptyContent(getString(R.string.common_error), getString(R.string.file_detail_activity_error));
             });
+            return;
+        }
+        
+        if (!isLoadingActivities) {
             return;
         }
 
@@ -346,6 +325,8 @@ public class FileDetailActivitiesFragment extends Fragment implements
                             populateList(activitiesAndVersions, lastGiven == -1);
                         }
                     });
+
+                    isDataFetched = true;
                 } else {
                     Log_OC.d(TAG, result.getLogMessage());
                     // show error
@@ -360,10 +341,13 @@ public class FileDetailActivitiesFragment extends Fragment implements
                             isLoadingActivities = false;
                         }
                     });
+
+                    isDataFetched = false;
                 }
 
                 hideRefreshLayoutLoader(activity);
             } catch (ClientFactory.CreationException e) {
+                isDataFetched = false;
                 Log_OC.e(TAG, "Error fetching file details activities", e);
             }
         });
@@ -466,15 +450,22 @@ public class FileDetailActivitiesFragment extends Fragment implements
     public boolean shouldCallGeneratedCallback(String tag, Object callContext) {
         return false;
     }
+    
+    @VisibleForTesting
+    public void disableLoadingActivities() {
+        isLoadingActivities = false;
+    }
 
     private static class SubmitCommentTask extends AsyncTask<Void, Void, Boolean> {
 
-        private String message;
-        private String fileId;
-        private VersionListInterface.CommentCallback callback;
-        private OwnCloudClient client;
+        private final String message;
+        private final long fileId;
+        private final VersionListInterface.CommentCallback callback;
+        private final OwnCloudClient client;
 
-        private SubmitCommentTask(String message, String fileId, VersionListInterface.CommentCallback callback,
+        private SubmitCommentTask(String message,
+                                  long fileId,
+                                  VersionListInterface.CommentCallback callback,
                                   OwnCloudClient client) {
             this.message = message;
             this.fileId = fileId;

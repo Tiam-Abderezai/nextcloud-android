@@ -1,25 +1,16 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author TSI-mc
- * Copyright (C) 2012  Bartek Przybylski
- * Copyright (C) 2015 ownCloud Inc.
- * Copyright (C) 2021 Chris Narkiewicz <hello@ezaquarii.com>
- * Copyright (C) 2022 TSI-mc
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2022 TSI-mc
+ * SPDX-FileCopyrightText: 2021 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018-2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2012 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2011 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.datamodel;
 
 import android.content.ContentProviderClient;
@@ -41,6 +32,9 @@ import android.text.TextUtils;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nextcloud.client.account.User;
+import com.nextcloud.client.database.NextcloudDatabase;
+import com.nextcloud.client.database.dao.FileDao;
+import com.nextcloud.client.database.entity.FileEntity;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.db.ProviderMeta.ProviderTableMeta;
 import com.owncloud.android.lib.common.network.WebdavEntry;
@@ -48,18 +42,24 @@ import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.lib.resources.files.ReadFileRemoteOperation;
 import com.owncloud.android.lib.resources.files.model.FileLockType;
+import com.owncloud.android.lib.resources.files.model.GeoLocation;
+import com.owncloud.android.lib.resources.files.model.ImageDimension;
 import com.owncloud.android.lib.resources.files.model.RemoteFile;
 import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.lib.resources.shares.ShareType;
 import com.owncloud.android.lib.resources.shares.ShareeUser;
 import com.owncloud.android.lib.resources.status.CapabilityBooleanType;
+import com.owncloud.android.lib.resources.status.E2EVersion;
 import com.owncloud.android.lib.resources.status.OCCapability;
 import com.owncloud.android.operations.RemoteOperationFailedException;
 import com.owncloud.android.utils.FileStorageUtils;
 import com.owncloud.android.utils.MimeType;
 import com.owncloud.android.utils.MimeTypeUtil;
 
+import org.apache.commons.io.FileUtils;
+
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -74,7 +74,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
+import kotlin.Pair;
 
 public class FileDataStorageManager {
     private static final String TAG = FileDataStorageManager.class.getSimpleName();
@@ -85,11 +85,15 @@ public class FileDataStorageManager {
     private static final String EXCEPTION_MSG = "Exception in batch of operations ";
 
     public static final int ROOT_PARENT_ID = 0;
-    public static final String NULL_STRING = "null";
+    private static final String JSON_NULL_STRING = "null";
+    private static final String JSON_EMPTY_ARRAY = "[]";
 
     private final ContentResolver contentResolver;
     private final ContentProviderClient contentProviderClient;
     private final User user;
+
+    private final FileDao fileDao = NextcloudDatabase.getInstance(MainApp.getAppContext()).fileDao();
+    private final Gson gson = new Gson();
 
     public FileDataStorageManager(User user, ContentResolver contentResolver) {
         this.contentProviderClient = null;
@@ -122,67 +126,99 @@ public class FileDataStorageManager {
 
     private @Nullable
     OCFile getFileByPath(String type, String path) {
-        Cursor cursor = getFileCursorForValue(type, path);
-        OCFile ocFile = null;
-        if (cursor.moveToFirst()) {
-            ocFile = createFileInstance(cursor);
-        }
-        cursor.close();
+        final boolean shouldUseEncryptedPath = ProviderTableMeta.FILE_PATH.equals(type);
+        FileEntity fileEntity = shouldUseEncryptedPath ?
+            fileDao.getFileByEncryptedRemotePath(path, user.getAccountName()) :
+            fileDao.getFileByDecryptedRemotePath(path, user.getAccountName());
 
-        if (ocFile == null && OCFile.ROOT_PATH.equals(path)) {
+        if (fileEntity != null) {
+            return createFileInstance(fileEntity);
+        }
+
+        if (OCFile.ROOT_PATH.equals(path)) {
             return createRootDir(); // root should always exist
         }
 
-        return ocFile;
+        return null;
     }
 
     public @Nullable
     OCFile getFileById(long id) {
-        Cursor cursor = getFileCursorForValue(ProviderTableMeta._ID, String.valueOf(id));
-        OCFile ocFile = null;
-
-        if (cursor.moveToFirst()) {
-            ocFile = createFileInstance(cursor);
+        FileEntity fileEntity = fileDao.getFileById(id);
+        if (fileEntity != null) {
+            return createFileInstance(fileEntity);
         }
-        cursor.close();
-
-        return ocFile;
+        return null;
     }
 
     public @Nullable
     OCFile getFileByLocalPath(String path) {
-        Cursor cursor = getFileCursorForValue(ProviderTableMeta.FILE_STORAGE_PATH, path);
-        OCFile ocFile = null;
-
-        if (cursor.moveToFirst()) {
-            ocFile = createFileInstance(cursor);
+        FileEntity fileEntity = fileDao.getFileByLocalPath(path, user.getAccountName());
+        if (fileEntity != null) {
+            return createFileInstance(fileEntity);
         }
-        cursor.close();
-
-        return ocFile;
+        return null;
     }
 
     public @Nullable
     OCFile getFileByRemoteId(String remoteId) {
-        Cursor cursor = getFileCursorForValue(ProviderTableMeta.FILE_REMOTE_ID, remoteId);
-        OCFile ocFile = null;
-
-        if (cursor.moveToFirst()) {
-            ocFile = createFileInstance(cursor);
+        FileEntity fileEntity = fileDao.getFileByRemoteId(remoteId, user.getAccountName());
+        if (fileEntity != null) {
+            return createFileInstance(fileEntity);
         }
-        cursor.close();
-
-        return ocFile;
+        return null;
     }
 
-    public boolean fileExists(long id) {
-        return fileExists(ProviderTableMeta._ID, String.valueOf(id));
-    }
+    public boolean fileExists(long id) { return fileDao.getFileById(id) != null; }
 
     public boolean fileExists(String path) {
-        return fileExists(ProviderTableMeta.FILE_PATH, path);
+        return fileDao.getFileByEncryptedRemotePath(path, user.getAccountName()) != null;
     }
 
+    public long getTopParentId(OCFile file) {
+        if (file.getParentId() == 1) {
+            return file.getFileId();
+        }
+
+        return getTopParentIdRecursive(file);
+    }
+
+    private long getTopParentIdRecursive(OCFile file) {
+        if (file.getParentId() == 1) {
+            return file.getFileId();
+        }
+
+        OCFile parentFile = getFileById(file.getParentId());
+        if (parentFile != null) {
+            return getTopParentId(parentFile);
+        }
+
+        return file.getFileId();
+    }
+
+    public List<OCFile> getAllFilesRecursivelyInsideFolder(OCFile file) {
+        ArrayList<OCFile> result = new ArrayList<>();
+
+        if (file == null || !file.fileExists()) {
+            return result;
+        }
+
+        if (!file.isFolder()) {
+            result.add(file);
+            return result;
+        }
+
+        List<OCFile> filesInsideFolder = getFolderContent(file.getFileId(), false);
+        for (OCFile item: filesInsideFolder) {
+            if (!item.isFolder()) {
+                result.add(item);
+            } else {
+                result.addAll(getAllFilesRecursivelyInsideFolder(item));
+            }
+        }
+
+        return result;
+    }
 
     public List<OCFile> getFolderContent(OCFile ocFile, boolean onlyOnDevice) {
         if (ocFile != null && ocFile.isFolder() && ocFile.fileExists()) {
@@ -191,7 +227,6 @@ public class FileDataStorageManager {
             return new ArrayList<>();
         }
     }
-
 
     public List<OCFile> getFolderImages(OCFile folder, boolean onlyOnDevice) {
         List<OCFile> imageList = new ArrayList<>();
@@ -305,6 +340,36 @@ public class FileDataStorageManager {
         }
 
         return ocFile;
+    }
+
+    public static void clearTempEncryptedFolder(String accountName) {
+        File tempEncryptedFolder =  new File(FileStorageUtils.getTemporalEncryptedFolderPath(accountName));
+
+        if (!tempEncryptedFolder.exists()) {
+            Log_OC.d(TAG,"tempEncryptedFolder does not exist");
+            return;
+        }
+
+        try {
+            FileUtils.cleanDirectory(tempEncryptedFolder);
+
+            Log_OC.d(TAG,"tempEncryptedFolder cleared");
+        } catch (IOException exception) {
+            Log_OC.d(TAG,"Error caught at clearTempEncryptedFolder: " + exception);
+        }
+    }
+
+    public static File createTempEncryptedFolder(String accountName) {
+        File tempEncryptedFolder = new File(FileStorageUtils.getTemporalEncryptedFolderPath(accountName));
+
+        if (!tempEncryptedFolder.exists()) {
+            boolean isTempEncryptedFolderCreated = tempEncryptedFolder.mkdirs();
+            Log_OC.d(TAG, "tempEncryptedFolder created" + isTempEncryptedFolderCreated);
+        } else {
+            Log_OC.d(TAG, "tempEncryptedFolder already exists");
+        }
+
+        return tempEncryptedFolder;
     }
 
     public void saveNewFile(OCFile newFile) {
@@ -463,12 +528,15 @@ public class FileDataStorageManager {
         cv.put(ProviderTableMeta.FILE_SHARED_WITH_SHAREE, fileOrFolder.isSharedWithSharee() ? 1 : 0);
         cv.put(ProviderTableMeta.FILE_PERMISSIONS, fileOrFolder.getPermissions());
         cv.put(ProviderTableMeta.FILE_REMOTE_ID, fileOrFolder.getRemoteId());
+        cv.put(ProviderTableMeta.FILE_LOCAL_ID, fileOrFolder.getLocalId());
         cv.put(ProviderTableMeta.FILE_FAVORITE, fileOrFolder.isFavorite());
+        cv.put(ProviderTableMeta.FILE_HIDDEN, fileOrFolder.shouldHide());
         cv.put(ProviderTableMeta.FILE_UNREAD_COMMENTS_COUNT, fileOrFolder.getUnreadCommentsCount());
         cv.put(ProviderTableMeta.FILE_OWNER_ID, fileOrFolder.getOwnerId());
         cv.put(ProviderTableMeta.FILE_OWNER_DISPLAY_NAME, fileOrFolder.getOwnerDisplayName());
         cv.put(ProviderTableMeta.FILE_NOTE, fileOrFolder.getNote());
-        cv.put(ProviderTableMeta.FILE_SHAREES, new Gson().toJson(fileOrFolder.getSharees()));
+        cv.put(ProviderTableMeta.FILE_SHAREES, gson.toJson(fileOrFolder.getSharees()));
+        cv.put(ProviderTableMeta.FILE_TAGS, gson.toJson(fileOrFolder.getTags()));
         cv.put(ProviderTableMeta.FILE_RICH_WORKSPACE, fileOrFolder.getRichWorkspace());
         return cv;
     }
@@ -502,6 +570,7 @@ public class FileDataStorageManager {
         cv.put(ProviderTableMeta.FILE_LOCKED, file.isLocked());
         final FileLockType lockType = file.getLockType();
         cv.put(ProviderTableMeta.FILE_LOCK_TYPE, lockType != null ? lockType.getValue() : -1);
+        cv.put(ProviderTableMeta.FILE_HIDDEN, file.shouldHide());
         cv.put(ProviderTableMeta.FILE_LOCK_OWNER, file.getLockOwnerId());
         cv.put(ProviderTableMeta.FILE_LOCK_OWNER_DISPLAY_NAME, file.getLockOwnerDisplayName());
         cv.put(ProviderTableMeta.FILE_LOCK_OWNER_EDITOR, file.getLockOwnerEditor());
@@ -509,6 +578,10 @@ public class FileDataStorageManager {
         cv.put(ProviderTableMeta.FILE_LOCK_TIMEOUT, file.getLockTimeout());
         cv.put(ProviderTableMeta.FILE_LOCK_TOKEN, file.getLockToken());
         cv.put(ProviderTableMeta.FILE_MODIFIED, file.getModificationTimestamp());
+        cv.put(ProviderTableMeta.FILE_METADATA_SIZE, gson.toJson(file.getImageDimension()));
+        cv.put(ProviderTableMeta.FILE_METADATA_GPS, gson.toJson(file.getGeoLocation()));
+        cv.put(ProviderTableMeta.FILE_METADATA_LIVE_PHOTO, file.getLinkedFileIdForLivePhoto());
+        cv.put(ProviderTableMeta.FILE_E2E_COUNTER, file.getE2eCounter());
 
         return cv;
     }
@@ -661,82 +734,60 @@ public class FileDataStorageManager {
                 throw new IllegalStateException("Parent folder of the target path does not exist!!");
             }
 
-            /// 1. get all the descendants of the moved element in a single QUERY
-            Cursor cursor = null;
-            if (getContentProviderClient() != null) {
-                try {
-                    cursor = getContentProviderClient().query(
-                        ProviderTableMeta.CONTENT_URI,
-                        null,
-                        ProviderTableMeta.FILE_ACCOUNT_OWNER + AND + ProviderTableMeta.FILE_PATH + " LIKE ? ",
-                        new String[]{user.getAccountName(), ocFile.getRemotePath() + "%"},
-                        ProviderTableMeta.FILE_PATH + " ASC "
-                    );
-                } catch (RemoteException e) {
-                    Log_OC.e(TAG, e.getMessage(), e);
-                }
+            String oldPath = ocFile.getRemotePath();
 
-            } else {
-                cursor = getContentResolver().query(
-                    ProviderTableMeta.CONTENT_URI,
-                    null,
-                    ProviderTableMeta.FILE_ACCOUNT_OWNER + AND + ProviderTableMeta.FILE_PATH + " LIKE ? ",
-                    new String[]{user.getAccountName(), ocFile.getRemotePath() + "%"},
-                    ProviderTableMeta.FILE_PATH + " ASC "
-                );
-            }
+            /// 1. get all the descendants of the moved element in a single QUERY
+            List<FileEntity> fileEntities =
+                fileDao.getFolderWithDescendants(oldPath + "%", user.getAccountName());
 
             /// 2. prepare a batch of update operations to change all the descendants
-            ArrayList<ContentProviderOperation> operations = new ArrayList<>(cursor.getCount());
+            ArrayList<ContentProviderOperation> operations = new ArrayList<>(fileEntities.size());
             String defaultSavePath = FileStorageUtils.getSavePath(user.getAccountName());
             List<String> originalPathsToTriggerMediaScan = new ArrayList<>();
             List<String> newPathsToTriggerMediaScan = new ArrayList<>();
 
-            if (cursor.moveToFirst()) {
-                int lengthOfOldPath = ocFile.getRemotePath().length();
-                int lengthOfOldStoragePath = defaultSavePath.length() + lengthOfOldPath;
-                do {
-                    ContentValues contentValues = new ContentValues(); // keep construction in the loop
-                    OCFile childFile = createFileInstance(cursor);
+            int lengthOfOldPath = oldPath.length();
+            int lengthOfOldStoragePath = defaultSavePath.length() + lengthOfOldPath;
+            for (FileEntity fileEntity: fileEntities) {
+                ContentValues contentValues = new ContentValues(); // keep construction in the loop
+                OCFile childFile = createFileInstance(fileEntity);
+                contentValues.put(
+                    ProviderTableMeta.FILE_PATH,
+                    targetPath + childFile.getRemotePath().substring(lengthOfOldPath)
+                                 );
+
+                if (!childFile.isEncrypted()) {
                     contentValues.put(
-                        ProviderTableMeta.FILE_PATH,
+                        ProviderTableMeta.FILE_PATH_DECRYPTED,
                         targetPath + childFile.getRemotePath().substring(lengthOfOldPath)
                                      );
+                }
 
-                    if (!childFile.isEncrypted()) {
-                        contentValues.put(
-                            ProviderTableMeta.FILE_PATH_DECRYPTED,
-                            targetPath + childFile.getRemotePath().substring(lengthOfOldPath)
-                                         );
+                if (childFile.getStoragePath() != null && childFile.getStoragePath().startsWith(defaultSavePath)) {
+                    // update link to downloaded content - but local move is not done here!
+                    String targetLocalPath = defaultSavePath + targetPath +
+                        childFile.getStoragePath().substring(lengthOfOldStoragePath);
+
+                    contentValues.put(ProviderTableMeta.FILE_STORAGE_PATH, targetLocalPath);
+
+                    if (MimeTypeUtil.isMedia(childFile.getMimeType())) {
+                        originalPathsToTriggerMediaScan.add(childFile.getStoragePath());
+                        newPathsToTriggerMediaScan.add(targetLocalPath);
                     }
 
-                    if (childFile.getStoragePath() != null && childFile.getStoragePath().startsWith(defaultSavePath)) {
-                        // update link to downloaded content - but local move is not done here!
-                        String targetLocalPath = defaultSavePath + targetPath +
-                            childFile.getStoragePath().substring(lengthOfOldStoragePath);
+                }
 
-                        contentValues.put(ProviderTableMeta.FILE_STORAGE_PATH, targetLocalPath);
+                if (childFile.getRemotePath().equals(ocFile.getRemotePath())) {
+                    contentValues.put(ProviderTableMeta.FILE_PARENT, targetParent.getFileId());
+                }
 
-                        if (MimeTypeUtil.isMedia(childFile.getMimeType())) {
-                            originalPathsToTriggerMediaScan.add(childFile.getStoragePath());
-                            newPathsToTriggerMediaScan.add(targetLocalPath);
-                        }
+                operations.add(
+                    ContentProviderOperation.newUpdate(ProviderTableMeta.CONTENT_URI)
+                        .withValues(contentValues)
+                        .withSelection(ProviderTableMeta._ID + " = ?", new String[]{String.valueOf(childFile.getFileId())})
+                        .build());
 
-                    }
-
-                    if (childFile.getRemotePath().equals(ocFile.getRemotePath())) {
-                        contentValues.put(ProviderTableMeta.FILE_PARENT, targetParent.getFileId());
-                    }
-
-                    operations.add(
-                        ContentProviderOperation.newUpdate(ProviderTableMeta.CONTENT_URI)
-                            .withValues(contentValues)
-                            .withSelection(ProviderTableMeta._ID + " = ?", new String[]{String.valueOf(childFile.getFileId())})
-                            .build());
-
-                } while (cursor.moveToNext());
             }
-            cursor.close();
 
             /// 3. apply updates in batch
             try {
@@ -860,46 +911,18 @@ public class FileDataStorageManager {
     }
 
     private List<OCFile> getFolderContent(long parentId, boolean onlyOnDevice) {
+        Log_OC.d(TAG, "getFolderContent - start");
         List<OCFile> folderContent = new ArrayList<>();
 
-        Uri requestURI = Uri.withAppendedPath(ProviderTableMeta.CONTENT_URI_DIR, String.valueOf(parentId));
-        Cursor cursor;
-
-        if (getContentProviderClient() != null) {
-            try {
-                cursor = getContentProviderClient().query(
-                    requestURI,
-                    null,
-                    ProviderTableMeta.FILE_PARENT + "=?",
-                    new String[]{String.valueOf(parentId)},
-                    null
-                );
-            } catch (RemoteException e) {
-                Log_OC.e(TAG, e.getMessage(), e);
-                return folderContent;
+        List<FileEntity> files = fileDao.getFolderContent(parentId);
+        for (FileEntity fileEntity: files) {
+            OCFile child = createFileInstance(fileEntity);
+            if (!onlyOnDevice || child.existsOnDevice()) {
+                folderContent.add(child);
             }
-        } else {
-            cursor = getContentResolver().query(
-                requestURI,
-                null,
-                ProviderTableMeta.FILE_PARENT + "=?",
-                new String[]{String.valueOf(parentId)},
-                null
-                                               );
         }
 
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                do {
-                    OCFile child = createFileInstance(cursor);
-                    if (!onlyOnDevice || child.existsOnDevice()) {
-                        folderContent.add(child);
-                    }
-                } while (cursor.moveToNext());
-            }
-            cursor.close();
-        }
-
+        Log_OC.d(TAG, "getFolderContent - finished");
         return folderContent;
     }
 
@@ -913,47 +936,6 @@ public class FileDataStorageManager {
         return ocFile;
     }
 
-    // TODO write test
-    private boolean fileExists(String key, String value) {
-        Cursor cursor = getFileCursorForValue(key, value);
-        boolean isExists = false;
-
-        if (cursor == null) {
-            Log_OC.e(TAG, "Couldn't determine file existance, assuming non existance");
-        } else {
-            isExists = cursor.moveToFirst();
-            cursor.close();
-        }
-
-        return isExists;
-    }
-
-    private Cursor getFileCursorForValue(String key, String value) {
-        Cursor cursor;
-        if (getContentResolver() != null) {
-            cursor = getContentResolver()
-                .query(ProviderTableMeta.CONTENT_URI,
-                       null,
-                       key + AND
-                           + ProviderTableMeta.FILE_ACCOUNT_OWNER
-                           + "=?",
-                       new String[]{value, user.getAccountName()}, null);
-        } else {
-            try {
-                cursor = getContentProviderClient().query(
-                    ProviderTableMeta.CONTENT_URI,
-                    null,
-                    key + AND + ProviderTableMeta.FILE_ACCOUNT_OWNER
-                        + "=?", new String[]{value, user.getAccountName()},
-                    null);
-            } catch (RemoteException e) {
-                Log_OC.e(TAG, "Could not get file details: " + e.getMessage(), e);
-                cursor = null;
-            }
-        }
-        return cursor;
-    }
-
     @Nullable
     private OCFile createFileInstanceFromVirtual(Cursor cursor) {
         long fileId = cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.VIRTUAL_OCFILE_ID));
@@ -961,78 +943,126 @@ public class FileDataStorageManager {
         return getFileById(fileId);
     }
 
-    private OCFile createFileInstance(Cursor cursor) {
-        OCFile ocFile = null;
-        if (cursor != null) {
-            ocFile = new OCFile(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_PATH)));
-            ocFile.setDecryptedRemotePath(getString(cursor, ProviderTableMeta.FILE_PATH_DECRYPTED));
-            ocFile.setFileId(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta._ID)));
-            ocFile.setParentId(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_PARENT)));
-            ocFile.setMimeType(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_CONTENT_TYPE)));
-            ocFile.setStoragePath(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_STORAGE_PATH)));
-            if (ocFile.getStoragePath() == null) {
-                // try to find existing file and bind it with current account;
-                // with the current update of SynchronizeFolderOperation, this won't be
-                // necessary anymore after a full synchronization of the account
-                File file = new File(FileStorageUtils.getDefaultSavePathFor(user.getAccountName(), ocFile));
-                if (file.exists()) {
-                    ocFile.setStoragePath(file.getAbsolutePath());
-                    ocFile.setLastSyncDateForData(file.lastModified());
-                }
+    private int nullToZero(Integer i) {
+        return (i == null) ? 0 : i;
+    }
+
+    private long nullToZero(Long i) {
+        return (i == null) ? 0 : i;
+    }
+
+    private OCFile createFileInstance(FileEntity fileEntity) {
+        OCFile ocFile = new OCFile(fileEntity.getPath());
+        ocFile.setDecryptedRemotePath(fileEntity.getPathDecrypted());
+        ocFile.setFileId(nullToZero(fileEntity.getId()));
+        ocFile.setParentId(nullToZero(fileEntity.getParent()));
+        ocFile.setMimeType(fileEntity.getContentType());
+        ocFile.setStoragePath(fileEntity.getStoragePath());
+        if (ocFile.getStoragePath() == null && ocFile.isFolder()) {
+            // Apparently storagePath is filled only for regular files - even in the current (Jan 2022) implementation.
+            // Check below is still required for directories.
+            //
+            // try to find existing file and bind it with current account;
+            // with the current update of SynchronizeFolderOperation, this won't be
+            // necessary anymore after a full synchronization of the account
+            File file = new File(FileStorageUtils.getDefaultSavePathFor(user.getAccountName(), ocFile));
+            if (file.exists()) {
+                ocFile.setStoragePath(file.getAbsolutePath());
+                ocFile.setLastSyncDateForData(file.lastModified());
             }
-            ocFile.setFileLength(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_CONTENT_LENGTH)));
-            ocFile.setCreationTimestamp(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_CREATION)));
-            ocFile.setModificationTimestamp(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_MODIFIED)));
-            ocFile.setModificationTimestampAtLastSyncForData(cursor.getLong(
-                cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_MODIFIED_AT_LAST_SYNC_FOR_DATA)));
-            ocFile.setLastSyncDateForProperties(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LAST_SYNC_DATE)));
-            ocFile.setLastSyncDateForData(cursor.getLong(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LAST_SYNC_DATE_FOR_DATA)));
-            ocFile.setEtag(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_ETAG)));
-            ocFile.setEtagOnServer(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_ETAG_ON_SERVER)));
-            ocFile.setSharedViaLink(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_SHARED_VIA_LINK)) == 1);
-            ocFile.setSharedWithSharee(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_SHARED_WITH_SHAREE)) == 1);
-            ocFile.setPermissions(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_PERMISSIONS)));
-            ocFile.setRemoteId(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_REMOTE_ID)));
-            ocFile.setUpdateThumbnailNeeded(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_UPDATE_THUMBNAIL)) == 1);
-            ocFile.setDownloading(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_IS_DOWNLOADING)) == 1);
-            ocFile.setEtagInConflict(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_ETAG_IN_CONFLICT)));
-            ocFile.setFavorite(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_FAVORITE)) == 1);
-            ocFile.setEncrypted(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_IS_ENCRYPTED)) == 1);
-//            if (ocFile.isEncrypted()) {
-//                ocFile.setFileName(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_NAME)));
-//            }
-            ocFile.setMountType(WebdavEntry.MountType.values()[cursor.getInt(
-                cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_MOUNT_TYPE))]);
-            ocFile.setPreviewAvailable(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_HAS_PREVIEW)) == 1);
-            ocFile.setUnreadCommentsCount(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_UNREAD_COMMENTS_COUNT)));
-            ocFile.setOwnerId(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_OWNER_ID)));
-            ocFile.setOwnerDisplayName(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_OWNER_DISPLAY_NAME)));
-            ocFile.setNote(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_NOTE)));
-            ocFile.setRichWorkspace(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_RICH_WORKSPACE)));
-            ocFile.setLocked(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCKED)) == 1);
-            final int lockTypeInt = cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_TYPE));
-            ocFile.setLockType(lockTypeInt != -1 ? FileLockType.fromValue(lockTypeInt) : null);
-            ocFile.setLockOwnerId(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_OWNER)));
-            ocFile.setLockOwnerDisplayName(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_OWNER_DISPLAY_NAME)));
-            ocFile.setLockOwnerEditor(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_OWNER_EDITOR)));
-            ocFile.setLockTimestamp(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_TIMESTAMP)));
-            ocFile.setLockTimeout(cursor.getInt(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_TIMEOUT)));
-            ocFile.setLockToken(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_LOCK_TOKEN)));
+        }
+        ocFile.setFileLength(nullToZero(fileEntity.getContentLength()));
+        ocFile.setCreationTimestamp(nullToZero(fileEntity.getCreation()));
+        ocFile.setModificationTimestamp(nullToZero(fileEntity.getModified()));
+        ocFile.setModificationTimestampAtLastSyncForData(nullToZero(fileEntity.getModifiedAtLastSyncForData()));
+        ocFile.setLastSyncDateForProperties(nullToZero(fileEntity.getLastSyncDate()));
+        ocFile.setLastSyncDateForData(nullToZero(fileEntity.getLastSyncDateForData()));
+        ocFile.setEtag(fileEntity.getEtag());
+        ocFile.setEtagOnServer(fileEntity.getEtagOnServer());
+        ocFile.setSharedViaLink(nullToZero(fileEntity.getSharedViaLink()) == 1);
+        ocFile.setSharedWithSharee(nullToZero(fileEntity.getSharedWithSharee()) == 1);
+        ocFile.setPermissions(fileEntity.getPermissions());
+        ocFile.setRemoteId(fileEntity.getRemoteId());
+        ocFile.setLocalId(fileEntity.getLocalId());
+        ocFile.setUpdateThumbnailNeeded(nullToZero(fileEntity.getUpdateThumbnail()) == 1);
+        ocFile.setDownloading(nullToZero(fileEntity.isDownloading()) == 1);
+        ocFile.setEtagInConflict(fileEntity.getEtagInConflict());
+        ocFile.setFavorite(nullToZero(fileEntity.getFavorite()) == 1);
+        ocFile.setEncrypted(nullToZero(fileEntity.isEncrypted()) == 1);
+//        if (ocFile.isEncrypted()) {
+//            ocFile.setFileName(cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_NAME)));
+//        }
+        Integer mountType = fileEntity.getMountType(); // TODO - any default when NULL returned?
+        if (mountType != null) {
+            ocFile.setMountType(WebdavEntry.MountType.values()[mountType]);
+        }
+        ocFile.setPreviewAvailable(nullToZero(fileEntity.getHasPreview()) == 1);
+        ocFile.setUnreadCommentsCount(nullToZero(fileEntity.getUnreadCommentsCount()));
+        ocFile.setOwnerId(fileEntity.getOwnerId());
+        ocFile.setOwnerDisplayName(fileEntity.getOwnerDisplayName());
+        ocFile.setNote(fileEntity.getNote());
+        ocFile.setRichWorkspace(fileEntity.getRichWorkspace());
+        ocFile.setLocked(nullToZero(fileEntity.getLocked()) == 1);
 
+        final int lockTypeInt = nullToZero(fileEntity.getLockType()); // TODO - what value should be used for NULL???
+        ocFile.setLockType(lockTypeInt != -1 ? FileLockType.fromValue(lockTypeInt) : null);
+        ocFile.setLockOwnerId(fileEntity.getLockOwner());
+        ocFile.setLockOwnerDisplayName(fileEntity.getLockOwnerDisplayName());
+        ocFile.setLockOwnerEditor(fileEntity.getLockOwnerEditor());
+        ocFile.setLockTimestamp(nullToZero(fileEntity.getLockTimestamp()));
+        ocFile.setLockTimeout(nullToZero(fileEntity.getLockTimeout()));
+        ocFile.setLockToken(fileEntity.getLockToken());
+        ocFile.setLivePhoto(fileEntity.getMetadataLivePhoto());
+        ocFile.setHidden(nullToZero(fileEntity.getHidden()) == 1);
+        ocFile.setE2eCounter(fileEntity.getE2eCounter());
 
-            String sharees = cursor.getString(cursor.getColumnIndexOrThrow(ProviderTableMeta.FILE_SHAREES));
-
-            if (sharees == null || NULL_STRING.equals(sharees) || sharees.isEmpty()) {
+        String sharees = fileEntity.getSharees();
+        // Surprisingly JSON deserialization causes significant overhead.
+        // Avoid it in common, trivial cases (null/empty).
+        if (sharees == null || sharees.isEmpty() ||
+            JSON_NULL_STRING.equals(sharees) || JSON_EMPTY_ARRAY.equals(sharees)) {
+            ocFile.setSharees(new ArrayList<>());
+        } else {
+            try {
+                ShareeUser[] shareesArray = gson.fromJson(sharees, ShareeUser[].class);
+                ocFile.setSharees(new ArrayList<>(Arrays.asList(shareesArray)));
+            } catch (JsonSyntaxException e) {
+                // ignore saved value due to api change
                 ocFile.setSharees(new ArrayList<>());
-            } else {
-                try {
-                    ShareeUser[] shareesArray = new Gson().fromJson(sharees, ShareeUser[].class);
+            }
+        }
 
-                    ocFile.setSharees(new ArrayList<>(Arrays.asList(shareesArray)));
-                } catch (JsonSyntaxException e) {
-                    // ignore saved value due to api change
-                    ocFile.setSharees(new ArrayList<>());
-                }
+        String tags = fileEntity.getTags();
+        if (tags == null || tags.isEmpty() ||
+            JSON_NULL_STRING.equals(tags) || JSON_EMPTY_ARRAY.equals(tags)) {
+            ocFile.setTags(new ArrayList<>());
+        } else {
+            try {
+                String[] tagsArray = gson.fromJson(tags, String[].class);
+                ocFile.setTags(new ArrayList<>(Arrays.asList(tagsArray)));
+            } catch (JsonSyntaxException e) {
+                // ignore saved value due to api change
+                ocFile.setTags(new ArrayList<>());
+            }
+        }
+
+        String metadataSize = fileEntity.getMetadataSize();
+        // Surprisingly JSON deserialization causes significant overhead.
+        // Avoid it in common, trivial cases (null/empty).
+        if (!(metadataSize == null || metadataSize.isEmpty() || JSON_NULL_STRING.equals(metadataSize))) {
+            ImageDimension imageDimension = gson.fromJson(metadataSize, ImageDimension.class);
+            if (imageDimension != null) {
+                ocFile.setImageDimension(imageDimension);
+            }
+        }
+
+        String metadataGPS = fileEntity.getMetadataGPS();
+        // Surprisingly JSON deserialization causes significant overhead.
+        // Avoid it in common, trivial cases (null/empty).
+        if (!(metadataGPS == null || metadataGPS.isEmpty() || JSON_NULL_STRING.equals(metadataGPS))) {
+            GeoLocation geoLocation = gson.fromJson(metadataGPS, GeoLocation.class);
+            if (geoLocation != null) {
+                ocFile.setGeoLocation(geoLocation);
             }
         }
 
@@ -1248,7 +1278,12 @@ public class FileDataStorageManager {
         ContentValues contentValues = new ContentValues();
         contentValues.put(ProviderTableMeta.OCSHARES_FILE_SOURCE, share.getFileSource());
         contentValues.put(ProviderTableMeta.OCSHARES_ITEM_SOURCE, share.getItemSource());
-        contentValues.put(ProviderTableMeta.OCSHARES_SHARE_TYPE, share.getShareType().getValue());
+
+        ShareType shareType = share.getShareType();
+        if (shareType != null) {
+            contentValues.put(ProviderTableMeta.OCSHARES_SHARE_TYPE, shareType.getValue());
+        }
+
         contentValues.put(ProviderTableMeta.OCSHARES_SHARE_WITH, share.getShareWith());
         contentValues.put(ProviderTableMeta.OCSHARES_PATH, share.getPath());
         contentValues.put(ProviderTableMeta.OCSHARES_PERMISSIONS, share.getPermissions());
@@ -1703,6 +1738,7 @@ public class FileDataStorageManager {
         }
     }
 
+    @SuppressFBWarnings("PSC")
     public void saveConflict(OCFile ocFile, String etagInConflict) {
         ContentValues cv = new ContentValues();
         if (!ocFile.isDown()) {
@@ -1798,7 +1834,7 @@ public class FileDataStorageManager {
                             ProviderTableMeta.CONTENT_URI_FILE,
                             projection,
                             whereForDescencentsInConflict,
-                            new String[]{user.getAccountName(), parentPath + "%"},
+                            new String[]{user.getAccountName(), parentPath + '%'},
                             null
                         );
                     } else {
@@ -1964,6 +2000,10 @@ public class FileDataStorageManager {
                           capability.getServerLogo());
         contentValues.put(ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION,
                           capability.getEndToEndEncryption().getValue());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION_KEYS_EXIST,
+                          capability.getEndToEndEncryptionKeysExist().getValue());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION_API_VERSION,
+                          capability.getEndToEndEncryptionApiVersion().getValue());
         contentValues.put(ProviderTableMeta.CAPABILITIES_SERVER_BACKGROUND_DEFAULT,
                           capability.getServerBackgroundDefault().getValue());
         contentValues.put(ProviderTableMeta.CAPABILITIES_SERVER_BACKGROUND_PLAIN,
@@ -1990,6 +2030,10 @@ public class FileDataStorageManager {
                           capability.getUserStatusSupportsEmoji().getValue());
         contentValues.put(ProviderTableMeta.CAPABILITIES_FILES_LOCKING_VERSION,
                           capability.getFilesLockingVersion());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_ASSISTANT, capability.getAssistant().getValue());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_GROUPFOLDERS, capability.getGroupfolders().getValue());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_DROP_ACCOUNT, capability.getDropAccount().getValue());
+        contentValues.put(ProviderTableMeta.CAPABILITIES_SECURITY_GUARD, capability.getSecurityGuard().getValue());
 
         return contentValues;
     }
@@ -2110,6 +2154,20 @@ public class FileDataStorageManager {
             capability.setServerSlogan(getString(cursor, ProviderTableMeta.CAPABILITIES_SERVER_SLOGAN));
             capability.setServerLogo(getString(cursor, ProviderTableMeta.CAPABILITIES_SERVER_LOGO));
             capability.setEndToEndEncryption(getBoolean(cursor, ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION));
+            capability.setEndToEndEncryptionKeysExist(
+                getBoolean(cursor,
+                           ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION_KEYS_EXIST)
+                                                     );
+
+            String e2eVersionString = getString(cursor, ProviderTableMeta.CAPABILITIES_END_TO_END_ENCRYPTION_API_VERSION);
+            E2EVersion e2EVersion;
+            if (e2eVersionString == null) {
+                e2EVersion = E2EVersion.UNKNOWN;
+            } else {
+                e2EVersion = E2EVersion.fromValue(e2eVersionString);
+            }
+            capability.setEndToEndEncryptionApiVersion(e2EVersion);
+
             capability.setServerBackgroundDefault(
                 getBoolean(cursor, ProviderTableMeta.CAPABILITIES_SERVER_BACKGROUND_DEFAULT));
             capability.setServerBackgroundPlain(getBoolean(cursor,
@@ -2141,6 +2199,10 @@ public class FileDataStorageManager {
                 getBoolean(cursor, ProviderTableMeta.CAPABILITIES_USER_STATUS_SUPPORTS_EMOJI));
             capability.setFilesLockingVersion(
                 getString(cursor, ProviderTableMeta.CAPABILITIES_FILES_LOCKING_VERSION));
+            capability.setAssistant(getBoolean(cursor, ProviderTableMeta.CAPABILITIES_ASSISTANT));
+            capability.setGroupfolders(getBoolean(cursor, ProviderTableMeta.CAPABILITIES_GROUPFOLDERS));
+            capability.setDropAccount(getBoolean(cursor, ProviderTableMeta.CAPABILITIES_DROP_ACCOUNT));
+            capability.setSecurityGuard(getBoolean(cursor, ProviderTableMeta.CAPABILITIES_SECURITY_GUARD));
         }
         return capability;
     }
@@ -2180,64 +2242,17 @@ public class FileDataStorageManager {
     }
 
     public List<OCFile> getGalleryItems(long startDate, long endDate) {
-        List<OCFile> files = new ArrayList<>();
+        Log_OC.d(TAG, "getGalleryItems - start: " + startDate + ", " + endDate);
 
-        Uri requestURI = ProviderTableMeta.CONTENT_URI;
-        Cursor cursor;
+        List<FileEntity> fileEntities = fileDao.getGalleryItems(startDate, endDate, user.getAccountName());
+        Log_OC.d(TAG, "getGalleryItems - query complete, list size: " + fileEntities.size());
 
-        if (getContentProviderClient() != null) {
-            try {
-                cursor = getContentProviderClient().query(
-                    requestURI,
-                    null,
-                    ProviderTableMeta.FILE_ACCOUNT_OWNER + AND +
-                        ProviderTableMeta.FILE_MODIFIED + ">=? AND " +
-                        ProviderTableMeta.FILE_MODIFIED + "<? AND (" +
-                        ProviderTableMeta.FILE_CONTENT_TYPE + " LIKE ? OR " +
-                        ProviderTableMeta.FILE_CONTENT_TYPE + " LIKE ? )",
-                    new String[]{
-                        user.getAccountName(),
-                        String.valueOf(startDate),
-                        String.valueOf(endDate),
-                        "image/%",
-                        "video/%"
-                    },
-                    null
-                                                         );
-            } catch (RemoteException e) {
-                Log_OC.e(TAG, e.getMessage(), e);
-                return files;
-            }
-        } else {
-            cursor = getContentResolver().query(
-                requestURI,
-                null,
-                ProviderTableMeta.FILE_ACCOUNT_OWNER + AND +
-                    ProviderTableMeta.FILE_MODIFIED + ">=? AND " +
-                    ProviderTableMeta.FILE_MODIFIED + "<? AND (" +
-                    ProviderTableMeta.FILE_CONTENT_TYPE + " LIKE ? OR " +
-                    ProviderTableMeta.FILE_CONTENT_TYPE + " LIKE ? )",
-                new String[]{
-                    user.getAccountName(),
-                    String.valueOf(startDate),
-                    String.valueOf(endDate),
-                    "image/%",
-                    "video/%"
-                },
-                null
-                                               );
+        List<OCFile> files = new ArrayList<>(fileEntities.size());
+        for (FileEntity fileEntity: fileEntities) {
+            files.add(createFileInstance(fileEntity));
         }
 
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                do {
-                    OCFile child = createFileInstance(cursor);
-                    files.add(child);
-                } while (cursor.moveToNext());
-            }
-            cursor.close();
-        }
-
+        Log_OC.d(TAG, "getGalleryItems - finished");
         return files;
     }
 
@@ -2317,6 +2332,59 @@ public class FileDataStorageManager {
         }
     }
 
+    public String getFolderName(String path) {
+        return "/" + path.split("/")[1] + "/";
+    }
+
+    public String retrieveRemotePathConsideringEncryption(OCFile file) {
+        if (file == null) {
+            throw new NullPointerException("file cannot be null");
+        }
+
+        String remotePath = file.getRemotePath();
+        if (file.isEncrypted()) {
+            remotePath = getEncryptedRemotePath(file.getRemotePath());
+        }
+
+        return remotePath;
+    }
+
+    public String getEncryptedRemotePath(String decryptedRemotePath) {
+        String folderName = getFolderName(decryptedRemotePath);
+
+        if (folderName == null) {
+            throw new NullPointerException("folderName cannot be null");
+        }
+
+        OCFile folder = getFileByDecryptedRemotePath(folderName);
+        List<OCFile> files = getAllFilesRecursivelyInsideFolder(folder);
+        List<Pair<String, String>> decryptedFileNamesAndEncryptedRemotePaths = getDecryptedFileNamesAndEncryptedRemotePaths(files);
+
+        String decryptedFileName = decryptedRemotePath.substring( decryptedRemotePath.lastIndexOf('/') + 1);
+
+        for (Pair<String, String> item : decryptedFileNamesAndEncryptedRemotePaths) {
+            if (item.getFirst().equals(decryptedFileName)) {
+                return item.getSecond();
+            }
+        }
+
+        return null;
+    }
+
+    @SuppressFBWarnings("OCP")
+    private List<Pair<String, String>> getDecryptedFileNamesAndEncryptedRemotePaths(List<OCFile> fileList) {
+        List<Pair<String, String>> result = new ArrayList<>();
+
+        for (OCFile file : fileList) {
+            if (file.isEncrypted()) {
+                Pair<String, String> fileNameAndEncryptedRemotePath = new Pair<>(file.getDecryptedFileName(), file.getRemotePath());
+                result.add(fileNameAndEncryptedRemotePath);
+            }
+        }
+
+        return result;
+    }
+
     public void removeLocalFiles(User user, FileDataStorageManager storageManager) {
         File tempDir = new File(FileStorageUtils.getTemporalPath(user.getAccountName()));
         File saveDir = new File(FileStorageUtils.getSavePath(user.getAccountName()));
@@ -2325,32 +2393,12 @@ public class FileDataStorageManager {
     }
 
     public List<OCFile> getAllFiles() {
-        String selection = ProviderTableMeta.FILE_ACCOUNT_OWNER + "= ? ";
-        String[] selectionArgs = new String[]{user.getAccountName()};
+        // TODO - Apparently this method is used only by tests
+        List<FileEntity> fileEntities = fileDao.getAllFiles(user.getAccountName());
+        List<OCFile> folderContent = new ArrayList<>(fileEntities.size());
 
-        List<OCFile> folderContent = new ArrayList<>();
-
-        Uri requestURI = ProviderTableMeta.CONTENT_URI_DIR;
-        Cursor cursor;
-
-        if (getContentProviderClient() != null) {
-            try {
-                cursor = getContentProviderClient().query(requestURI, null, selection, selectionArgs, null);
-            } catch (RemoteException e) {
-                Log_OC.e(TAG, e.getMessage(), e);
-                return folderContent;
-            }
-        } else {
-            cursor = getContentResolver().query(requestURI, null, selection, selectionArgs, null);
-        }
-
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                do {
-                    folderContent.add(createFileInstance(cursor));
-                } while (cursor.moveToNext());
-            }
-            cursor.close();
+        for (FileEntity fileEntity: fileEntities) {
+            folderContent.add(createFileInstance(fileEntity));
         }
 
         return folderContent;
@@ -2384,7 +2432,18 @@ public class FileDataStorageManager {
         return user;
     }
 
-    public OCFile getDefaultRootPath(){
+    public OCFile getDefaultRootPath() {
         return new OCFile(OCFile.ROOT_PATH);
+    }
+
+    public List<OCFile> getFilesWithSyncConflict(User user) {
+        List<FileEntity> fileEntities = fileDao.getFilesWithSyncConflict(user.getAccountName());
+        List<OCFile> files = new ArrayList<>(fileEntities.size());
+
+        for (FileEntity fileEntity : fileEntities) {
+            files.add(createFileInstance(fileEntity));
+        }
+
+        return files;
     }
 }

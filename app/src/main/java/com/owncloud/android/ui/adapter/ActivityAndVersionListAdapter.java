@@ -1,28 +1,11 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * @author Tobias Kaminsky
- * @author Andy Scherzinger
- *
- * Copyright (C) 2019 Tobias Kaminsky
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- * Copyright (C) 2020 Andy Scherzinger
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter;
 
 import android.content.Context;
@@ -33,15 +16,13 @@ import android.view.ViewGroup;
 import com.nextcloud.client.account.CurrentAccountProvider;
 import com.nextcloud.client.network.ClientFactory;
 import com.nextcloud.common.NextcloudClient;
-import com.owncloud.android.R;
 import com.owncloud.android.databinding.VersionListItemBinding;
 import com.owncloud.android.lib.resources.activities.model.Activity;
 import com.owncloud.android.lib.resources.files.model.FileVersion;
 import com.owncloud.android.ui.interfaces.ActivityListInterface;
 import com.owncloud.android.ui.interfaces.VersionListInterface;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.Collections;
 import java.util.Date;
@@ -61,16 +42,14 @@ public class ActivityAndVersionListAdapter extends ActivityListAdapter {
         ActivityListInterface activityListInterface,
         VersionListInterface.View versionListInterface,
         ClientFactory clientFactory,
-        ThemeColorUtils themeColorUtils,
-        ThemeDrawableUtils themeDrawableUtils
+        ViewThemeUtils viewThemeUtils
                                         ) {
         super(context,
               currentAccountProvider,
               activityListInterface,
               clientFactory,
               true,
-              themeColorUtils,
-              themeDrawableUtils);
+              viewThemeUtils);
 
         this.versionListInterface = versionListInterface;
     }
@@ -106,13 +85,7 @@ public class ActivityAndVersionListAdapter extends ActivityListAdapter {
 
             if (item instanceof Activity) {
                 Activity activity = (Activity) item;
-                if (activity.getDatetime() != null) {
-                    time = getHeaderDateString(context, activity.getDatetime().getTime()).toString();
-                } else if (activity.getDate() != null) {
-                    time = getHeaderDateString(context, activity.getDate().getTime()).toString();
-                } else {
-                    time = context.getString(R.string.date_unknown);
-                }
+                time = getHeaderDateString(context, activity.getDatetime().getTime()).toString();
             } else {
                 FileVersion version = (FileVersion) item;
                 time = getHeaderDateString(context, version.getModifiedTimestamp()).toString();

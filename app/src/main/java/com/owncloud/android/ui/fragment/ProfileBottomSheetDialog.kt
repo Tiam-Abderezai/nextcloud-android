@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2021 Tobias Kaminsky
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2021 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.fragment
 
@@ -39,8 +26,7 @@ import com.owncloud.android.R
 import com.owncloud.android.databinding.ProfileBottomSheetActionBinding
 import com.owncloud.android.databinding.ProfileBottomSheetFragmentBinding
 import com.owncloud.android.utils.DisplayUtils
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 
 /**
  * Show actions of an user
@@ -49,8 +35,7 @@ class ProfileBottomSheetDialog(
     private val fileActivity: FragmentActivity,
     private val user: User,
     private val hoverCard: HoverCard,
-    private val themeColorUtils: ThemeColorUtils,
-    private val themeDrawableUtils: ThemeDrawableUtils
+    private val viewThemeUtils: ViewThemeUtils
 ) : BottomSheetDialog(fileActivity), DisplayUtils.AvatarGenerationListener {
     private var _binding: ProfileBottomSheetFragmentBinding? = null
 
@@ -64,7 +49,8 @@ class ProfileBottomSheetDialog(
         if (window != null) {
             window!!.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        val primaryColor = themeColorUtils.primaryColor(context, true)
+
+        viewThemeUtils.platform.themeDialog(binding.root)
 
         binding.icon.tag = hoverCard.userId
         DisplayUtils.setAvatar(
@@ -106,7 +92,7 @@ class ProfileBottomSheetDialog(
                     null
                 )
             )
-            themeDrawableUtils.tintDrawable(actionBinding.icon.drawable, primaryColor)
+            viewThemeUtils.platform.tintPrimaryDrawable(context, actionBinding.icon.drawable)
 
             creatorView.setOnClickListener { v: View? ->
                 send(hoverCard.userId, action)

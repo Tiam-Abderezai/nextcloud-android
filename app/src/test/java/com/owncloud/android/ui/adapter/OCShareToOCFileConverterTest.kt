@@ -1,29 +1,15 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Álvaro Brey Vilas
- * Copyright (C) 2022 Álvaro Brey Vilas
- * Copyright (C) 2022 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
-
 package com.owncloud.android.ui.adapter
 
 import com.owncloud.android.lib.resources.shares.OCShare
 import com.owncloud.android.lib.resources.shares.ShareType
-import org.junit.Assert
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class OCShareToOCFileConverterTest {
@@ -34,16 +20,18 @@ class OCShareToOCFileConverterTest {
             OCShare("/foo")
                 .apply {
                     shareType = ShareType.PUBLIC_LINK
+                    isFavorite = true
                 }
         )
 
         val result = OCShareToOCFileConverter.buildOCFilesFromShares(shares)
 
-        Assert.assertEquals("Wrong file list size", 1, result.size)
+        assertEquals("Wrong file list size", 1, result.size)
         val ocFile = result[0]
-        Assert.assertEquals("Wrong file path", "/foo", ocFile.remotePath)
-        Assert.assertEquals("File should have link attribute", true, ocFile.isSharedViaLink)
-        Assert.assertEquals("File should not have sharee attribute", false, ocFile.isSharedWithSharee)
+        assertEquals("Wrong file path", "/foo", ocFile.remotePath)
+        assertEquals("File should have link attribute", true, ocFile.isSharedViaLink)
+        assertEquals("File should not have sharee attribute", false, ocFile.isSharedWithSharee)
+        assertEquals("Wrong favorite status", true, ocFile.isFavorite)
     }
 
     @Test
@@ -70,13 +58,14 @@ class OCShareToOCFileConverterTest {
 
         val result = OCShareToOCFileConverter.buildOCFilesFromShares(shares)
 
-        Assert.assertEquals("Wrong file list size", 1, result.size)
+        assertEquals("Wrong file list size", 1, result.size)
         val ocFile = result[0]
-        Assert.assertEquals("Wrong file path", "/foo", ocFile.remotePath)
-        Assert.assertEquals("File should have link attribute", true, ocFile.isSharedViaLink)
-        Assert.assertEquals("File should have sharee attribute", true, ocFile.isSharedWithSharee)
-        Assert.assertEquals("Wrong name of sharees", 1, ocFile.sharees.size)
-        Assert.assertEquals("Wrong shared timestamp", 10000, ocFile.firstShareTimestamp)
+        assertEquals("Wrong file path", "/foo", ocFile.remotePath)
+        assertEquals("File should have link attribute", true, ocFile.isSharedViaLink)
+        assertEquals("File should have sharee attribute", true, ocFile.isSharedWithSharee)
+        assertEquals("Wrong name of sharees", 1, ocFile.sharees.size)
+        assertEquals("Wrong shared timestamp", 10000, ocFile.firstShareTimestamp)
+        assertEquals("Wrong favorite status", false, ocFile.isFavorite)
     }
 
     @Test
@@ -107,23 +96,23 @@ class OCShareToOCFileConverterTest {
                 .apply {
                     shareType = ShareType.EMAIL
                     sharedDate = 5
-                },
+                }
         )
 
         val result = OCShareToOCFileConverter.buildOCFilesFromShares(shares)
 
-        Assert.assertEquals("Wrong file list size", 2, result.size)
+        assertEquals("Wrong file list size", 2, result.size)
 
         val ocFile = result[0]
-        Assert.assertEquals("Wrong file path", "/foo", ocFile.remotePath)
-        Assert.assertEquals("File should have no link attribute", false, ocFile.isSharedViaLink)
-        Assert.assertEquals("File should have sharee attribute", true, ocFile.isSharedWithSharee)
-        Assert.assertEquals("Wrong name of sharees", 3, ocFile.sharees.size)
-        Assert.assertEquals("Wrong shared timestamp", 10000, ocFile.firstShareTimestamp)
+        assertEquals("Wrong file path", "/foo", ocFile.remotePath)
+        assertEquals("File should have no link attribute", false, ocFile.isSharedViaLink)
+        assertEquals("File should have sharee attribute", true, ocFile.isSharedWithSharee)
+        assertEquals("Wrong name of sharees", 3, ocFile.sharees.size)
+        assertEquals("Wrong shared timestamp", 10000, ocFile.firstShareTimestamp)
 
         val ocFile2 = result[1]
-        Assert.assertEquals("Wrong file path", "/bar", ocFile2.remotePath)
-        Assert.assertEquals("File should have link attribute", true, ocFile2.isSharedViaLink)
-        Assert.assertEquals("File should have no sharee attribute", false, ocFile2.isSharedWithSharee)
+        assertEquals("Wrong file path", "/bar", ocFile2.remotePath)
+        assertEquals("File should have link attribute", true, ocFile2.isSharedViaLink)
+        assertEquals("File should have no sharee attribute", false, ocFile2.isSharedWithSharee)
     }
 }

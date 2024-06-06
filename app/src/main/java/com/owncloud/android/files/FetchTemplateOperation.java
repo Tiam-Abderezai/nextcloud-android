@@ -1,22 +1,9 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.files;
 
@@ -78,11 +65,11 @@ public class FetchTemplateOperation extends RemoteOperation {
                 for (int i = 0; i < templates.length(); i++) {
                     JSONObject templateObject = templates.getJSONObject(i);
 
-                    templateArray.add(new Template(templateObject.getInt("id"),
+                    templateArray.add(new Template(templateObject.getLong("id"),
                                                    templateObject.getString("name"),
                                                    templateObject.optString("preview"),
                                                    Template.Type.parse(templateObject.getString("type")
-                                                                            .toUpperCase(Locale.ROOT)),
+                                                                           .toUpperCase(Locale.ROOT)),
                                                    templateObject.getString("extension")));
                 }
 

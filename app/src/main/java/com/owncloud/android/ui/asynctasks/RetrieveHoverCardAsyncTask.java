@@ -1,24 +1,10 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2021 Tobias Kaminsky
- * Copyright (C) 2021 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2021 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.asynctasks;
 
 import android.os.AsyncTask;
@@ -32,8 +18,7 @@ import com.owncloud.android.R;
 import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.ui.fragment.ProfileBottomSheetDialog;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.lang.ref.WeakReference;
 
@@ -45,21 +30,18 @@ public class RetrieveHoverCardAsyncTask extends AsyncTask<Void, Void, HoverCard>
     private final String userId;
     private final WeakReference<FragmentActivity> activityWeakReference;
     private final ClientFactory clientFactory;
-    private final ThemeColorUtils themeColorUtils;
-    private final ThemeDrawableUtils themeDrawableUtils;
+    private final ViewThemeUtils viewThemeUtils;
 
     public RetrieveHoverCardAsyncTask(User user,
                                       String userId,
                                       FragmentActivity activity,
                                       ClientFactory clientFactory,
-                                      ThemeColorUtils themeColorUtils,
-                                      ThemeDrawableUtils themeDrawableUtils) {
+                                      ViewThemeUtils viewThemeUtils) {
         this.user = user;
         this.userId = userId;
         this.activityWeakReference = new WeakReference<>(activity);
         this.clientFactory = clientFactory;
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     @Override
@@ -84,7 +66,11 @@ public class RetrieveHoverCardAsyncTask extends AsyncTask<Void, Void, HoverCard>
 
         if (activity != null && activity.getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.RESUMED)) {
             if (hoverCard.getActions().size() > 0) {
-                new ProfileBottomSheetDialog(activity, user, hoverCard, themeColorUtils, themeDrawableUtils).show();
+                new ProfileBottomSheetDialog(activity,
+                                             user,
+                                             hoverCard,
+                                             viewThemeUtils)
+                    .show();
             } else {
                 DisplayUtils.showSnackMessage(activity, R.string.no_actions);
             }

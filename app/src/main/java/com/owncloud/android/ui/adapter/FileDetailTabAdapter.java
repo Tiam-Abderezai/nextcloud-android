@@ -1,29 +1,17 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Andy Scherzinger
- * Copyright (C) 2018 Andy Scherzinger
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter;
 
 import com.nextcloud.client.account.User;
+import com.nextcloud.ui.ImageDetailFragment;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.ui.fragment.FileDetailActivitiesFragment;
 import com.owncloud.android.ui.fragment.FileDetailSharingFragment;
+import com.owncloud.android.utils.MimeTypeUtil;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
@@ -34,16 +22,22 @@ import androidx.fragment.app.FragmentStatePagerAdapter;
  * File details pager adapter.
  */
 public class FileDetailTabAdapter extends FragmentStatePagerAdapter {
-    private OCFile file;
-    private User user;
+    private final OCFile file;
+    private final User user;
+    private final boolean showSharingTab;
 
     private FileDetailSharingFragment fileDetailSharingFragment;
     private FileDetailActivitiesFragment fileDetailActivitiesFragment;
+    private ImageDetailFragment imageDetailFragment;
 
-    public FileDetailTabAdapter(FragmentManager fm, OCFile file, User user) {
+    public FileDetailTabAdapter(FragmentManager fm,
+                                OCFile file,
+                                User user,
+                                boolean showSharingTab) {
         super(fm);
         this.file = file;
         this.user = user;
+        this.showSharingTab = showSharingTab;
     }
 
     @NonNull
@@ -57,6 +51,9 @@ public class FileDetailTabAdapter extends FragmentStatePagerAdapter {
             case 1:
                 fileDetailSharingFragment = FileDetailSharingFragment.newInstance(file, user);
                 return fileDetailSharingFragment;
+            case 2:
+                imageDetailFragment = ImageDetailFragment.newInstance(file, user);
+                return imageDetailFragment;
         }
     }
 
@@ -68,12 +65,22 @@ public class FileDetailTabAdapter extends FragmentStatePagerAdapter {
         return fileDetailActivitiesFragment;
     }
 
+    public ImageDetailFragment getImageDetailFragment() {
+        return imageDetailFragment;
+    }
+
     @Override
     public int getCount() {
-        if (file.isEncrypted()) {
-            return 1; // sharing not allowed for encrypted files, thus only show first tab (activities)
+        if (showSharingTab) {
+            if (MimeTypeUtil.isImage(file)) {
+                return 3;
+            }
+            return 2;
         } else {
-            return 2; // show activities and sharing tab
+            if (MimeTypeUtil.isImage(file)) {
+                return 2;
+            }
+            return 1;
         }
     }
 }

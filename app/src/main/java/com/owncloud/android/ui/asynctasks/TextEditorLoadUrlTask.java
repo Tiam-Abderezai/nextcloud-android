@@ -1,48 +1,36 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2019 Tobias Kaminsky
- * Copyright (C) 2019 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.asynctasks;
 
-import android.accounts.Account;
 import android.os.AsyncTask;
 
 import com.nextcloud.android.lib.resources.directediting.DirectEditingOpenFileRemoteOperation;
 import com.nextcloud.client.account.User;
+import com.nextcloud.utils.EditorUtils;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.lib.common.Editor;
 import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.ui.activity.EditorWebView;
-import com.owncloud.android.utils.EditorUtils;
 
 import java.lang.ref.WeakReference;
 
 public class TextEditorLoadUrlTask extends AsyncTask<Void, Void, String> {
 
+    private final EditorUtils editorUtils;
     private WeakReference<EditorWebView> editorWebViewWeakReference;
     private OCFile file;
     private User user;
 
-    public TextEditorLoadUrlTask(EditorWebView editorWebView, User user, OCFile file) {
+    public TextEditorLoadUrlTask(EditorWebView editorWebView, User user, OCFile file, EditorUtils editorUtils) {
         this.user = user;
         this.editorWebViewWeakReference = new WeakReference<>(editorWebView);
         this.file = file;
+        this.editorUtils = editorUtils;
     }
 
     @Override
@@ -53,7 +41,7 @@ public class TextEditorLoadUrlTask extends AsyncTask<Void, Void, String> {
             return "";
         }
 
-        Editor editor = EditorUtils.getEditor(editorWebView.getContentResolver(), user, file.getMimeType());
+        Editor editor = editorUtils.getEditor(user, file.getMimeType());
 
         if (editor == null) {
             return "";

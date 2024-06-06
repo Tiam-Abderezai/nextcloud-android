@@ -1,25 +1,10 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2019 Tobias Kaminsky
- * Copyright (C) 2019 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.preview;
 
 import android.os.AsyncTask;
@@ -34,14 +19,16 @@ import android.widget.TextView;
 
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
+import com.nextcloud.ui.fileactions.FileActionsBottomSheet;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.OCFile;
-import com.owncloud.android.files.FileMenuFilter;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.ui.dialog.ConfirmationDialogFragment;
 import com.owncloud.android.ui.dialog.RemoveFilesDialogFragment;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.MimeTypeUtil;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.mozilla.universalchardet.ReaderFactory;
 
@@ -51,6 +38,8 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Scanner;
@@ -60,6 +49,8 @@ import javax.inject.Inject;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SearchView;
 import androidx.core.view.MenuItemCompat;
+import androidx.fragment.app.FragmentManager;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 public class PreviewTextFileFragment extends PreviewTextFragment {
     private static final String EXTRA_FILE = "FILE";
@@ -73,6 +64,7 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
     private User user;
 
     @Inject UserAccountManager accountManager;
+    @Inject ViewThemeUtils viewThemeUtils;
 
     public static PreviewTextFileFragment create(User user, OCFile file, boolean openSearch, String searchQuery) {
         Bundle args = new Bundle();
@@ -111,11 +103,11 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
         Bundle args = getArguments();
 
         if (file == null) {
-            file = args.getParcelable(EXTRA_FILE);
+            file = BundleExtensionsKt.getParcelableArgument(args, EXTRA_FILE, OCFile.class);
         }
 
         if (user == null) {
-            user = args.getParcelable(EXTRA_USER);
+            user = BundleExtensionsKt.getParcelableArgument(args, EXTRA_USER, User.class);
         }
 
         if (args.containsKey(EXTRA_SEARCH_QUERY)) {
@@ -131,8 +123,8 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
                 throw new IllegalStateException("Instanced with a NULL ownCloud Account");
             }
         } else {
-            file = savedInstanceState.getParcelable(EXTRA_FILE);
-            user = savedInstanceState.getParcelable(EXTRA_USER);
+            file = BundleExtensionsKt.getParcelableArgument(savedInstanceState, EXTRA_FILE, OCFile.class);
+            user = BundleExtensionsKt.getParcelableArgument(savedInstanceState, EXTRA_USER, User.class);
         }
 
         handler = new Handler();
@@ -223,12 +215,13 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
         }
 
         @Override
+        @SuppressFBWarnings("STT")
         protected void onPostExecute(final StringWriter stringWriter) {
             final TextView textView = textViewReference.get();
 
             if (textView != null) {
                 originalText = stringWriter.toString();
-                setText(textView, originalText, getFile(), requireActivity(), false, false, themeColorUtils);
+                setText(textView, originalText, getFile(), requireActivity(), false, false, viewThemeUtils);
 
                 if (searchView != null) {
                     searchView.setOnQueryTextListener(PreviewTextFileFragment.this);
@@ -254,12 +247,13 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
     @Override
     public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
         super.onCreateOptionsMenu(menu, inflater);
-        inflater.inflate(R.menu.item_file, menu);
+        inflater.inflate(R.menu.custom_menu_placeholder, menu);
 
         MenuItem menuItem = menu.findItem(R.id.action_search);
         menuItem.setVisible(true);
         searchView = (SearchView) MenuItemCompat.getActionView(menuItem);
         searchView.setMaxWidth(Integer.MAX_VALUE);
+        viewThemeUtils.androidx.themeToolbarSearchView(searchView);
 
         if (searchOpen) {
             searchView.setIconified(false);
@@ -268,74 +262,65 @@ public class PreviewTextFileFragment extends PreviewTextFragment {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public void onPrepareOptionsMenu(@NonNull Menu menu) {
-        super.onPrepareOptionsMenu(menu);
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.custom_menu_placeholder_item) {
+            final OCFile file = getFile();
+            if (containerActivity.getStorageManager() != null && file != null) {
+                // Update the file
+                final OCFile updatedFile = containerActivity.getStorageManager().getFileById(file.getFileId());
+                setFile(updatedFile);
 
-        if (containerActivity.getStorageManager() != null) {
-            User user = accountManager.getUser();
-            FileMenuFilter mf = new FileMenuFilter(
-                getFile(),
-                containerActivity,
-                getActivity(),
-                false,
-                user
-            );
-            mf.filter(menu, true);
+                final OCFile fileNew = getFile();
+                if (fileNew != null) {
+                    showFileActions(file);
+                }
+            }
+            return true;
         }
-
-        // additional restriction for this fragment
-        FileMenuFilter.hideMenuItems(
-            menu.findItem(R.id.action_rename_file),
-            menu.findItem(R.id.action_select_all),
-            menu.findItem(R.id.action_move),
-            menu.findItem(R.id.action_download_file),
-            menu.findItem(R.id.action_sync_file),
-            menu.findItem(R.id.action_favorite),
-            menu.findItem(R.id.action_unset_favorite)
-        );
-
-        if (getFile().isSharedWithMe() && !getFile().canReshare()) {
-            FileMenuFilter.hideMenuItem(menu.findItem(R.id.action_send_share_file));
-        }
+        return super.onOptionsItemSelected(item);
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int itemId = item.getItemId();
+    private void showFileActions(OCFile file) {
+        final List<Integer> additionalFilter = new ArrayList<>(
+            Arrays.asList(
+                R.id.action_rename_file,
+                R.id.action_sync_file,
+                R.id.action_move_or_copy,
+                R.id.action_favorite,
+                R.id.action_unset_favorite,
+                R.id.action_pin_to_homescreen
+                         ));
+        if (getFile() != null && getFile().isSharedWithMe() && !getFile().canReshare()) {
+            additionalFilter.add(R.id.action_send_share_file);
+        }
+        final FragmentManager fragmentManager = getChildFragmentManager();
+        FileActionsBottomSheet.newInstance(file, false, additionalFilter)
+            .setResultListener(fragmentManager, this, this::onFileActionChosen)
+            .show(fragmentManager, "actions");
+    }
 
+    private void onFileActionChosen(final int itemId) {
         if (itemId == R.id.action_send_share_file) {
             if (getFile().isSharedWithMe() && !getFile().canReshare()) {
                 DisplayUtils.showSnackMessage(getView(), R.string.resharing_is_not_allowed);
             } else {
                 containerActivity.getFileOperationsHelper().sendShareFile(getFile());
             }
-            return true;
         } else if (itemId == R.id.action_open_file_with) {
             openFile();
-            return true;
         } else if (itemId == R.id.action_remove_file) {
             RemoveFilesDialogFragment dialog = RemoveFilesDialogFragment.newInstance(getFile());
             dialog.show(getFragmentManager(), ConfirmationDialogFragment.FTAG_CONFIRMATION);
-            return true;
         } else if (itemId == R.id.action_see_details) {
             seeDetails();
-            return true;
         } else if (itemId == R.id.action_sync_file) {
             containerActivity.getFileOperationsHelper().syncFile(getFile());
-            return true;
+        } else if(itemId == R.id.action_cancel_sync){
+            containerActivity.getFileOperationsHelper().cancelTransference(getFile());
         } else if (itemId == R.id.action_edit) {
             containerActivity.getFileOperationsHelper().openFileWithTextEditor(getFile(), getContext());
-            return true;
         }
-
-        return super.onOptionsItemSelected(item);
     }
 
     /**

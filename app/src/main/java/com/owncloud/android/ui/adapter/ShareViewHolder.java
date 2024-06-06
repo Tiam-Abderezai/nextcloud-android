@@ -8,18 +8,7 @@
  * Copyright (C) 2020 Nextcloud GmbH
  * Copyright (C) 2021 TSI-mc
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.adapter;
@@ -36,8 +25,7 @@ import com.owncloud.android.lib.resources.shares.OCShare;
 import com.owncloud.android.ui.TextDrawable;
 import com.owncloud.android.ui.fragment.util.SharingMenuHelper;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeAvatarUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
@@ -48,8 +36,7 @@ class ShareViewHolder extends RecyclerView.ViewHolder {
     private float avatarRadiusDimension;
     private User user;
     private Context context;
-    private ThemeColorUtils themeColorUtils;
-    private ThemeAvatarUtils themeAvatarUtils;
+    private ViewThemeUtils viewThemeUtils;
 
     public ShareViewHolder(@NonNull View itemView) {
         super(itemView);
@@ -58,14 +45,12 @@ class ShareViewHolder extends RecyclerView.ViewHolder {
     public ShareViewHolder(FileDetailsShareShareItemBinding binding,
                            User user,
                            Context context,
-                           ThemeColorUtils themeColorUtils,
-                           ThemeAvatarUtils themeAvatarUtils) {
+                           final ViewThemeUtils viewThemeUtils) {
         this(binding.getRoot());
         this.binding = binding;
         this.user = user;
         this.context = context;
-        this.themeColorUtils = themeColorUtils;
-        this.themeAvatarUtils = themeAvatarUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     public void bind(OCShare share,
@@ -80,14 +65,14 @@ class ShareViewHolder extends RecyclerView.ViewHolder {
         switch (share.getShareType()) {
             case GROUP:
                 name = context.getString(R.string.share_group_clarification, name);
-                themeAvatarUtils.createAvatar(share.getShareType(), binding.icon, context, themeColorUtils);
+                viewThemeUtils.files.createAvatar(share.getShareType(), binding.icon, context);
                 break;
             case ROOM:
                 name = context.getString(R.string.share_room_clarification, name);
-                themeAvatarUtils.createAvatar(share.getShareType(), binding.icon, context, themeColorUtils);
+                viewThemeUtils.files.createAvatar(share.getShareType(), binding.icon, context);
                 break;
             case CIRCLE:
-                themeAvatarUtils.createAvatar(share.getShareType(), binding.icon, context, themeColorUtils);
+                viewThemeUtils.files.createAvatar(share.getShareType(), binding.icon, context);
                 break;
             case FEDERATED:
                 name = context.getString(R.string.share_remote_clarification, name);

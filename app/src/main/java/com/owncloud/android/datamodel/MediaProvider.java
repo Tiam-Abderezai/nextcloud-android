@@ -1,24 +1,10 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Andy Scherzinger
- * Copyright (C) 2016 Andy Scherzinger
- * Copyright (C) 2016 Nextcloud
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2016 Andy Scherzinger
+ * SPDX-FileCopyrightText: 2016 Nextcloud
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.datamodel;
 
 import android.content.ContentResolver;
@@ -29,7 +15,7 @@ import android.provider.MediaStore;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.utils.PermissionUtil;
-import com.owncloud.android.utils.theme.ThemeSnackbarUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -74,9 +60,9 @@ public final class MediaProvider {
                                                     int itemLimit,
                                                     @Nullable final AppCompatActivity activity,
                                                     boolean getWithoutActivity,
-                                                    ThemeSnackbarUtils themeSnackbarUtils) {
+                                                    final ViewThemeUtils viewThemeUtils) {
         // check permissions
-        checkPermissions(activity, themeSnackbarUtils);
+        checkPermissions(activity, viewThemeUtils);
 
         // query media/image folders
         Cursor cursorFolders = null;
@@ -174,10 +160,10 @@ public final class MediaProvider {
     }
 
     private static void checkPermissions(@Nullable AppCompatActivity activity,
-                                         ThemeSnackbarUtils themeSnackbarUtils) {
+                                         final ViewThemeUtils viewThemeUtils) {
         if (activity != null &&
             !PermissionUtil.checkExternalStoragePermission(activity.getApplicationContext())) {
-            PermissionUtil.requestExternalStoragePermission(activity, themeSnackbarUtils, true);
+            PermissionUtil.requestExternalStoragePermission(activity, viewThemeUtils, true);
         }
     }
 
@@ -185,9 +171,9 @@ public final class MediaProvider {
                                                     int itemLimit,
                                                     @Nullable final AppCompatActivity activity,
                                                     boolean getWithoutActivity,
-                                                    ThemeSnackbarUtils themeSnackbarUtils) {
+                                                    final ViewThemeUtils viewThemeUtils) {
         // check permissions
-        checkPermissions(activity, themeSnackbarUtils);
+        checkPermissions(activity, viewThemeUtils);
 
         // query media/image folders
         Cursor cursorFolders = null;

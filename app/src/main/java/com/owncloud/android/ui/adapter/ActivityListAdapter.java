@@ -1,26 +1,12 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Alejandro Bautista
- * @author Chris Narkiewicz
- * @author Andy Scherzinger
- *
- * Copyright (C) 2017 Alejandro Bautista
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- * Copyright (C) 2020 Andy Scherzinger
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2019 Alex Plutta <alex.plutta@googlemail.com>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2017 Alejandro Morales <aleister09@gmail.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.adapter;
 
@@ -72,8 +58,7 @@ import com.owncloud.android.utils.MimeTypeUtil;
 import com.owncloud.android.utils.glide.CustomGlideStreamLoader;
 import com.owncloud.android.utils.svg.SvgBitmapTranscoder;
 import com.owncloud.android.utils.svg.SvgDecoder;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -100,8 +85,7 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
     private ClientFactory clientFactory;
     protected List<Object> values;
     private boolean isDetailView;
-    private ThemeColorUtils themeColorUtils;
-    private ThemeDrawableUtils themeDrawableUtils;
+    private ViewThemeUtils viewThemeUtils;
 
     public ActivityListAdapter(
         Context context,
@@ -109,8 +93,7 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         ActivityListInterface activityListInterface,
         ClientFactory clientFactory,
         boolean isDetailView,
-        ThemeColorUtils themeColorUtils,
-        ThemeDrawableUtils themeDrawableUtils) {
+        ViewThemeUtils viewThemeUtils) {
         this.values = new ArrayList<>();
         this.context = context;
         this.currentAccountProvider = currentAccountProvider;
@@ -118,8 +101,7 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         this.clientFactory = clientFactory;
         px = getThumbnailDimension();
         this.isDetailView = isDetailView;
-        this.themeColorUtils = themeColorUtils;
-        this.themeDrawableUtils = themeDrawableUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     public void setActivityItems(List<Object> activityItems, NextcloudClient client, boolean clear) {
@@ -133,13 +115,7 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         for (Object o : activityItems) {
             Activity activity = (Activity) o;
             String time;
-            if (activity.getDatetime() != null) {
-                time = getHeaderDateString(context, activity.getDatetime().getTime()).toString();
-            } else if (activity.getDate() != null) {
-                time = getHeaderDateString(context, activity.getDate().getTime()).toString();
-            } else {
-                time = context.getString(R.string.date_unknown);
-            }
+            time = getHeaderDateString(context, activity.getDatetime().getTime()).toString();
 
             if (sTime.equalsIgnoreCase(time)) {
                 values.add(activity);
@@ -171,18 +147,14 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         if (holder instanceof ActivityViewHolder) {
             final ActivityViewHolder activityViewHolder = (ActivityViewHolder) holder;
             Activity activity = (Activity) values.get(position);
-            if (activity.getDatetime() != null) {
-                activityViewHolder.binding.datetime.setVisibility(View.VISIBLE);
-                activityViewHolder.binding.datetime.setText(DateFormat.format("HH:mm", activity.getDatetime().getTime()));
-            } else {
-                activityViewHolder.binding.datetime.setVisibility(View.GONE);
-            }
+            activityViewHolder.binding.datetime.setVisibility(View.VISIBLE);
+            activityViewHolder.binding.datetime.setText(DateFormat.format("HH:mm", activity.getDatetime().getTime()));
 
-            if (activity.getRichSubjectElement() != null &&
-                !TextUtils.isEmpty(activity.getRichSubjectElement().getRichSubject())) {
+            if (!TextUtils.isEmpty(activity.getRichSubjectElement().getRichSubject())) {
                 activityViewHolder.binding.subject.setVisibility(View.VISIBLE);
                 activityViewHolder.binding.subject.setMovementMethod(LinkMovementMethod.getInstance());
-                activityViewHolder.binding.subject.setText(addClickablePart(activity.getRichSubjectElement()), TextView.BufferType.SPANNABLE);
+                activityViewHolder.binding.subject.setText(addClickablePart(activity.getRichSubjectElement()),
+                                                           TextView.BufferType.SPANNABLE);
                 activityViewHolder.binding.subject.setVisibility(View.VISIBLE);
             } else if (!TextUtils.isEmpty(activity.getSubject())) {
                 activityViewHolder.binding.subject.setVisibility(View.VISIBLE);
@@ -214,8 +186,7 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
             }
 
 
-            if (activity.getRichSubjectElement() != null &&
-                activity.getRichSubjectElement().getRichObjectList().size() > 0) {
+            if (activity.getRichSubjectElement().getRichObjectList().size() > 0) {
                 activityViewHolder.binding.list.setVisibility(View.VISIBLE);
                 activityViewHolder.binding.list.removeAllViews();
 
@@ -286,15 +257,12 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
                 .into(imageView);
         } else {
             if (MimeTypeUtil.isFolder(previewObject.getMimeType())) {
-                imageView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context,
-                                                                             themeColorUtils,
-                                                                             themeDrawableUtils));
+                imageView.setImageDrawable(MimeTypeUtil.getDefaultFolderIcon(context, viewThemeUtils));
             } else {
                 imageView.setImageDrawable(MimeTypeUtil.getFileTypeIcon(previewObject.getMimeType(),
                                                                         "",
                                                                         context,
-                                                                        themeColorUtils,
-                                                                        themeDrawableUtils));
+                                                                        viewThemeUtils));
             }
         }
 
@@ -397,8 +365,8 @@ public class ActivityListAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
     private int getThumbnailDimension() {
         // Converts dp to pixel
         Resources r = MainApp.getAppContext().getResources();
-        Double d = Math.pow(2, Math.floor(Math.log(r.getDimension(R.dimen.file_icon_size_grid)) / Math.log(2))) / 2;
-        return d.intValue();
+        double d = Math.pow(2, Math.floor(Math.log(r.getDimension(R.dimen.file_icon_size_grid)) / Math.log(2))) / 2;
+        return (int) d;
     }
 
     CharSequence getHeaderDateString(Context context, long modificationTimestamp) {

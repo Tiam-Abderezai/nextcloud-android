@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Nextcloud - Android Client
+  ~
+  ~ SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+  ~ SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingHorizontal="@dimen/dialog_padding"
+    android:paddingTop="@dimen/dialog_padding"
+    tools:context="com.owncloud.android.ui.activity.SsoGrantPermissionActivity"
+    tools:ignore="UseCompoundDrawables">
+
+    <ImageView
+        android:id="@+id/appIcon"
+        android:layout_width="@dimen/user_icon_size"
+        android:layout_height="@dimen/user_icon_size"
+        android:layout_gravity="top|start"
+        android:layout_marginEnd="@dimen/standard_margin"
+        android:contentDescription="@null"
+        android:src="@drawable/background"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/permissionText"
+        tools:src="@drawable/file_application" />
+
+    <TextView
+        android:id="@+id/permissionText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/zero"
+        android:paddingLeft="@dimen/zero"
+        android:paddingEnd="@dimen/zero"
+        android:paddingRight="@dimen/zero"
+        android:paddingBottom="@dimen/standard_padding"
+        android:textSize="@dimen/permission_dialog_text_size"
+        app:layout_constraintBottom_toTopOf="@+id/btnGrant"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Grant Nextcloud News access to your Nextcloud account incrediblyLong_username_with_123456789_number@Nextcloud_dummy.com?" />
+
+</LinearLayout>

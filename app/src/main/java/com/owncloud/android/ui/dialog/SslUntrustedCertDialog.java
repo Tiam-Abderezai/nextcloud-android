@@ -1,22 +1,14 @@
-/**
- *   ownCloud Android client application
+/*
+ * Nextcloud - Android Client
  *
- *   @author masensio
- *   @author David A. Velasco
- *   Copyright (C) 2015 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2018-2022 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2020 Stefan Niedermann <info@niedermann.it>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2014 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.ui.dialog;
 
@@ -24,14 +16,14 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.net.http.SslError;
 import android.os.Bundle;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.SslErrorHandler;
 import android.widget.Button;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.nextcloud.client.di.Injectable;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.SslUntrustedCertLayoutBinding;
 import com.owncloud.android.lib.common.network.CertificateCombinedException;
@@ -41,24 +33,27 @@ import com.owncloud.android.ui.adapter.CertificateCombinedExceptionViewAdapter;
 import com.owncloud.android.ui.adapter.SslCertificateViewAdapter;
 import com.owncloud.android.ui.adapter.SslErrorViewAdapter;
 import com.owncloud.android.ui.adapter.X509CertificateViewAdapter;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.cert.X509Certificate;
 
+import javax.inject.Inject;
+
 import androidx.annotation.NonNull;
 import androidx.fragment.app.DialogFragment;
 
 /**
- * Dialog to show information about an untrusted certificate and allow the user
- * to decide trust on it or not.
- *
- * Abstract implementation of common functionality for different dialogs that
- * get the information about the error and the certificate from different classes.
+ * Dialog to show information about an untrusted certificate and allow the user to decide trust on it or not.
+ * Abstract implementation of common functionality for different dialogs that get the information about the error and
+ * the certificate from different classes.
  */
-public class SslUntrustedCertDialog extends DialogFragment {
+public class SslUntrustedCertDialog extends DialogFragment implements Injectable {
 
     private final static String TAG = SslUntrustedCertDialog.class.getSimpleName();
+
+    @Inject ViewThemeUtils viewThemeUtils;
 
     protected SslUntrustedCertLayoutBinding binding;
     protected SslErrorHandler mHandler;
@@ -110,7 +105,6 @@ public class SslUntrustedCertDialog extends DialogFragment {
         return dialog;
     }
 
-
     @Override
     public void onAttach(@NonNull Activity activity) {
         Log_OC.d(TAG, "onAttach");
@@ -119,7 +113,6 @@ public class SslUntrustedCertDialog extends DialogFragment {
             throw new IllegalArgumentException("The host activity must implement " + OnSslUntrustedCertListener.class.getCanonicalName());
         }
     }
-
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -130,17 +123,14 @@ public class SslUntrustedCertDialog extends DialogFragment {
         binding = null;
     }
 
+    @NonNull
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        Log_OC.d(TAG, "onCreateView, savedInsanceState is " + savedInstanceState);
-        // Create a view by inflating desired layout
-        if (binding == null) {
-            binding = SslUntrustedCertLayoutBinding.inflate(inflater, container, false);
-            binding.detailsScroll.setVisibility(View.GONE);
-            mErrorViewAdapter.updateErrorView(binding);
-        } else {
-            ((ViewGroup) binding.getRoot().getParent()).removeView(binding.getRoot());
-        }
+    public Dialog onCreateDialog(Bundle savedInstanceState) {
+        Log_OC.d(TAG, "onCreateDialog, savedInstanceState is " + savedInstanceState);
+
+        binding = SslUntrustedCertLayoutBinding.inflate(getLayoutInflater(), null, false);
+        binding.detailsScroll.setVisibility(View.GONE);
+        mErrorViewAdapter.updateErrorView(binding);
 
         binding.ok.setOnClickListener(new OnCertificateTrusted());
 
@@ -158,14 +148,13 @@ public class SslUntrustedCertDialog extends DialogFragment {
             }
         });
 
-        return binding.getRoot();
-    }
 
-    @NonNull
-    @Override
-    public Dialog onCreateDialog(Bundle savedInstanceState) {
-        Log_OC.d(TAG, "onCreateDialog, savedInstanceState is " + savedInstanceState);
-        final Dialog dialog = super.onCreateDialog(savedInstanceState);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(binding.getRoot().getContext());
+        builder.setView(binding.getRoot());
+
+        viewThemeUtils.dialog.colorMaterialAlertDialogBackground(binding.getRoot().getContext(), builder);
+
+        final Dialog dialog = builder.create();
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         return dialog;
     }
@@ -190,7 +179,6 @@ public class SslUntrustedCertDialog extends DialogFragment {
         }
     }
 
-
     private class OnCertificateTrusted implements OnClickListener {
 
         @Override
@@ -210,13 +198,10 @@ public class SslUntrustedCertDialog extends DialogFragment {
                 }
             }
         }
-
     }
-
 
     public interface OnSslUntrustedCertListener {
         void onSavedCertificate();
-
         void onFailedSavingCertificate();
     }
 

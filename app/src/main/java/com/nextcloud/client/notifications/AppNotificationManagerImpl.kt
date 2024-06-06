@@ -1,3 +1,9 @@
+/*
+ * Nextcloud - Android Client
+ *
+ * SPDX-FileCopyrightText: 2020-2021 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+ */
 package com.nextcloud.client.notifications
 
 import android.app.Notification
@@ -16,14 +22,14 @@ import com.owncloud.android.ui.activity.FileDisplayActivity
 import com.owncloud.android.ui.notifications.NotificationUtils
 import com.owncloud.android.ui.preview.PreviewImageActivity
 import com.owncloud.android.ui.preview.PreviewImageFragment
-import com.owncloud.android.utils.theme.ThemeColorUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import javax.inject.Inject
 
 class AppNotificationManagerImpl @Inject constructor(
     private val context: Context,
     private val resources: Resources,
     private val platformNotificationsManager: NotificationManager,
-    private val themeColorUtils: ThemeColorUtils
+    private val viewThemeUtils: ViewThemeUtils
 ) : AppNotificationManager {
 
     companion object {
@@ -32,19 +38,20 @@ class AppNotificationManagerImpl @Inject constructor(
     }
 
     private fun builder(channelId: String): NotificationCompat.Builder {
-        val color = themeColorUtils.primaryColor(context, true)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationCompat.Builder(context, channelId).setColor(color)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationCompat.Builder(context, channelId)
         } else {
-            NotificationCompat.Builder(context).setColor(color)
+            NotificationCompat.Builder(context)
         }
+        viewThemeUtils.androidx.themeNotificationCompatBuilder(context, builder)
+        return builder
     }
 
     override fun buildDownloadServiceForegroundNotification(): Notification {
         val icon = BitmapFactory.decodeResource(resources, R.drawable.notification_icon)
         return builder(NotificationUtils.NOTIFICATION_CHANNEL_DOWNLOAD)
             .setContentTitle(resources.getString(R.string.app_name))
-            .setContentText(resources.getString(R.string.foreground_service_download))
+            .setContentText(resources.getString(R.string.worker_download))
             .setSmallIcon(R.drawable.notification_icon)
             .setLargeIcon(icon)
             .build()

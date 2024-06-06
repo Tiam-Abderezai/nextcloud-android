@@ -1,37 +1,23 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2022 Tobias Kaminsky
- * Copyright (C) 2022 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.adapter
 
 import android.content.Context
 import com.nextcloud.client.account.User
+import com.nextcloud.client.jobs.upload.FileUploadHelper
 import com.nextcloud.client.preferences.AppPreferences
 import com.owncloud.android.datamodel.FileDataStorageManager
 import com.owncloud.android.datamodel.GalleryItems
+import com.owncloud.android.datamodel.GalleryRow
 import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.ui.activity.ComponentsGetter
 import com.owncloud.android.ui.interfaces.OCFileListFragmentInterface
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import junit.framework.Assert.assertEquals
 import org.junit.After
 import org.junit.Before
@@ -61,10 +47,10 @@ class GalleryAdapterTest {
     lateinit var storageManager: FileDataStorageManager
 
     @Mock
-    lateinit var themeColorUtils: ThemeColorUtils
+    lateinit var fileUploadHelper: FileUploadHelper
 
     @Mock
-    lateinit var themeDrawableUtils: ThemeDrawableUtils
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     private lateinit var mocks: AutoCloseable
 
@@ -81,6 +67,9 @@ class GalleryAdapterTest {
     @Test
     fun testItemCount() {
         whenever(transferServiceGetter.storageManager) doReturn storageManager
+        whenever(transferServiceGetter.fileUploaderHelper) doReturn fileUploadHelper
+
+        val thumbnailSize = 50
 
         val sut = GalleryAdapter(
             context,
@@ -88,17 +77,24 @@ class GalleryAdapterTest {
             ocFileListFragmentInterface,
             preferences,
             transferServiceGetter,
-            themeColorUtils,
-            themeDrawableUtils
+            viewThemeUtils,
+            5,
+            thumbnailSize
         )
 
         val list = listOf(
-            GalleryItems(1649317247, listOf(OCFile("/1.md"), OCFile("/2.md"))),
-            GalleryItems(1649317247, listOf(OCFile("/1.md"), OCFile("/2.md")))
+            GalleryItems(
+                1649317247,
+                listOf(GalleryRow(listOf(OCFile("/1.md"), OCFile("/2.md")), thumbnailSize, thumbnailSize))
+            ),
+            GalleryItems(
+                1649317248,
+                listOf(GalleryRow(listOf(OCFile("/1.md"), OCFile("/2.md")), thumbnailSize, thumbnailSize))
+            )
         )
 
         sut.addFiles(list)
 
-        assertEquals(4, sut.getFilesCount())
+        assertEquals(2, sut.getFilesCount())
     }
 }

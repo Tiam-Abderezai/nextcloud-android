@@ -1,23 +1,10 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Andy Scherzinger
- * Copyright (C) 2016 Andy Scherzinger
- * Copyright (C) 2016 Nextcloud
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2016 Andy Scherzinger
+ * SPDX-FileCopyrightText: 2016 Nextcloud
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.activity
 
@@ -40,15 +27,18 @@ import androidx.recyclerview.widget.GridLayoutManager
 import com.nextcloud.client.core.Clock
 import com.nextcloud.client.device.PowerManagementService
 import com.nextcloud.client.di.Injectable
-import com.nextcloud.client.jobs.BackgroundJobManager
 import com.nextcloud.client.jobs.MediaFoldersDetectionWork
 import com.nextcloud.client.jobs.NotificationWork
+import com.nextcloud.client.jobs.upload.FileUploadWorker
 import com.nextcloud.client.preferences.AppPreferences
+import com.nextcloud.client.preferences.SubFolderRule
+import com.nextcloud.utils.extensions.getParcelableArgument
+import com.nextcloud.utils.extensions.isDialogFragmentReady
 import com.owncloud.android.BuildConfig
 import com.owncloud.android.MainApp
 import com.owncloud.android.R
 import com.owncloud.android.databinding.SyncedFoldersLayoutBinding
-import com.owncloud.android.datamodel.ArbitraryDataProvider
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl
 import com.owncloud.android.datamodel.MediaFolder
 import com.owncloud.android.datamodel.MediaFolderType
 import com.owncloud.android.datamodel.MediaProvider
@@ -56,7 +46,6 @@ import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.datamodel.SyncedFolder
 import com.owncloud.android.datamodel.SyncedFolderDisplayItem
 import com.owncloud.android.datamodel.SyncedFolderProvider
-import com.owncloud.android.files.services.FileUploader
 import com.owncloud.android.files.services.NameCollisionPolicy
 import com.owncloud.android.lib.common.utils.Log_OC
 import com.owncloud.android.ui.adapter.SyncedFolderAdapter
@@ -66,8 +55,7 @@ import com.owncloud.android.ui.dialog.SyncedFolderPreferencesDialogFragment.OnSy
 import com.owncloud.android.ui.dialog.parcel.SyncedFolderParcelable
 import com.owncloud.android.utils.PermissionUtil
 import com.owncloud.android.utils.SyncedFolderUtils
-import com.owncloud.android.utils.theme.ThemeButtonUtils
-import com.owncloud.android.utils.theme.ThemeSnackbarUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,7 +67,7 @@ import javax.inject.Inject
 /**
  * Activity displaying all auto-synced folders and/or instant upload media folders.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class SyncedFoldersActivity :
     FileActivity(),
     SyncedFolderAdapter.ClickListener,
@@ -88,6 +76,7 @@ class SyncedFoldersActivity :
 
     companion object {
         private const val SYNCED_FOLDER_PREFERENCES_DIALOG_TAG = "SYNCED_FOLDER_PREFERENCES_DIALOG"
+
         // yes, there is a typo in this value
         private const val KEY_SYNCED_FOLDER_INITIATED_PREFIX = "syncedFolderIntitiated_"
         private val PRIORITIZED_FOLDERS = arrayOf("Camera", "Screenshots")
@@ -155,19 +144,15 @@ class SyncedFoldersActivity :
     lateinit var clock: Clock
 
     @Inject
-    lateinit var backgroundJobManager: BackgroundJobManager
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     @Inject
-    lateinit var themeButtonUtils: ThemeButtonUtils
+    lateinit var syncedFolderProvider: SyncedFolderProvider
 
-    @Inject
-    lateinit var themeSnackBarUtils: ThemeSnackbarUtils
+    lateinit var binding: SyncedFoldersLayoutBinding
+    lateinit var adapter: SyncedFolderAdapter
 
-    private lateinit var binding: SyncedFoldersLayoutBinding
-    private lateinit var adapter: SyncedFolderAdapter
-    private lateinit var syncedFolderProvider: SyncedFolderProvider
-
-    private var syncedFolderPreferencesDialogFragment: SyncedFolderPreferencesDialogFragment? = null
+    private var dialogFragment: SyncedFolderPreferencesDialogFragment? = null
     private var path: String? = null
     private var type = 0
     private var loadJob: Job? = null
@@ -242,7 +227,7 @@ class SyncedFoldersActivity :
             .setTitle(R.string.autoupload_disable_power_save_check)
             .setMessage(getString(R.string.power_save_check_dialog_message))
             .show()
-        themeButtonUtils.themeBorderlessButton(themeColorUtils, alertDialog.getButton(AlertDialog.BUTTON_POSITIVE))
+        viewThemeUtils.platform.colorTextButtons(alertDialog.getButton(AlertDialog.BUTTON_POSITIVE))
     }
 
     /**
@@ -251,10 +236,16 @@ class SyncedFoldersActivity :
     private fun setupContent() {
         val gridWidth = resources.getInteger(R.integer.media_grid_width)
         val lightVersion = resources.getBoolean(R.bool.syncedFolder_light)
-        adapter = SyncedFolderAdapter(this, clock, gridWidth, this, lightVersion, themeColorUtils, themeDrawableUtils)
-        syncedFolderProvider = SyncedFolderProvider(contentResolver, preferences, clock)
+        adapter = SyncedFolderAdapter(
+            this,
+            clock,
+            gridWidth,
+            this,
+            lightVersion,
+            viewThemeUtils
+        )
         binding.emptyList.emptyListIcon.setImageResource(R.drawable.nav_synced_folders)
-        themeButtonUtils.colorPrimaryButton(binding.emptyList.emptyListViewAction, this, themeColorUtils)
+        viewThemeUtils.material.colorMaterialButtonPrimaryFilled(binding.emptyList.emptyListViewAction)
         val lm = GridLayoutManager(this, gridWidth)
         adapter.setLayoutManager(lm)
         val spacing = resources.getDimensionPixelSize(R.dimen.media_grid_spacing)
@@ -290,7 +281,7 @@ class SyncedFoldersActivity :
                 perFolderMediaItemLimit,
                 this@SyncedFoldersActivity,
                 false,
-                themeSnackbarUtils
+                viewThemeUtils
             )
             mediaFolders.addAll(
                 MediaProvider.getVideoFolders(
@@ -298,7 +289,7 @@ class SyncedFoldersActivity :
                     perFolderMediaItemLimit,
                     this@SyncedFoldersActivity,
                     false,
-                    themeSnackbarUtils
+                    viewThemeUtils
                 )
             )
             val syncedFolderArrayList = syncedFolderProvider.syncedFolders
@@ -377,7 +368,7 @@ class SyncedFoldersActivity :
     private fun createSyncedFolderWithoutMediaFolder(syncedFolder: SyncedFolder): SyncedFolderDisplayItem {
         val localFolder = File(syncedFolder.localPath)
         val files = SyncedFolderUtils.getFileList(localFolder)
-        val filePaths = getDisplayFilePathList(files.toList())
+        val filePaths = getDisplayFilePathList(files)
         return SyncedFolderDisplayItem(
             syncedFolder.id,
             syncedFolder.localPath,
@@ -395,7 +386,10 @@ class SyncedFoldersActivity :
             localFolder.name,
             files.size.toLong(),
             syncedFolder.type,
-            syncedFolder.isHidden
+            syncedFolder.isHidden,
+            syncedFolder.subfolderRule,
+            syncedFolder.isExcludeHidden,
+            syncedFolder.lastScanTimestampMs
         )
     }
 
@@ -424,7 +418,10 @@ class SyncedFoldersActivity :
             mediaFolder.folderName,
             mediaFolder.numberOfFiles,
             mediaFolder.type,
-            syncedFolder.isHidden
+            syncedFolder.isHidden,
+            syncedFolder.subfolderRule,
+            syncedFolder.isExcludeHidden,
+            syncedFolder.lastScanTimestampMs
         )
     }
 
@@ -444,7 +441,7 @@ class SyncedFoldersActivity :
             true,
             false,
             account.name,
-            FileUploader.LOCAL_BEHAVIOUR_FORGET,
+            FileUploadWorker.LOCAL_BEHAVIOUR_FORGET,
             NameCollisionPolicy.ASK_USER.serialize(),
             false,
             clock.currentTime,
@@ -452,7 +449,10 @@ class SyncedFoldersActivity :
             mediaFolder.folderName,
             mediaFolder.numberOfFiles,
             mediaFolder.type,
-            false
+            false,
+            SubFolderRule.YEAR_MONTH,
+            false,
+            SyncedFolder.NOT_SCANNED_YET
         )
     }
 
@@ -537,17 +537,20 @@ class SyncedFoldersActivity :
                         true,
                         false,
                         account.name,
-                        FileUploader.LOCAL_BEHAVIOUR_FORGET,
+                        FileUploadWorker.LOCAL_BEHAVIOUR_FORGET,
                         NameCollisionPolicy.ASK_USER.serialize(),
                         false,
                         clock.currentTime,
                         null,
                         MediaFolderType.CUSTOM,
-                        false
+                        false,
+                        SubFolderRule.YEAR_MONTH,
+                        false,
+                        SyncedFolder.NOT_SCANNED_YET
                     )
                     onSyncFolderSettingsClick(0, emptyCustomFolder)
                 } else {
-                    PermissionUtil.requestExternalStoragePermission(this, themeSnackBarUtils, true)
+                    PermissionUtil.requestExternalStoragePermission(this, viewThemeUtils, true)
                 }
                 result = super.onOptionsItemSelected(item)
             }
@@ -569,19 +572,27 @@ class SyncedFoldersActivity :
             }
         }
         if (syncedFolderDisplayItem.isEnabled) {
-            backgroundJobManager.startImmediateFilesSyncJob(skipCustomFolders = false, overridePowerSaving = false)
+            backgroundJobManager.startImmediateFilesSyncJob(syncedFolderDisplayItem.id, overridePowerSaving = false)
             showBatteryOptimizationInfo()
         }
     }
 
     override fun onSyncFolderSettingsClick(section: Int, syncedFolderDisplayItem: SyncedFolderDisplayItem) {
-        val fm = supportFragmentManager
-        val ft = fm.beginTransaction()
-        ft.addToBackStack(null)
-        syncedFolderPreferencesDialogFragment = SyncedFolderPreferencesDialogFragment.newInstance(
-            syncedFolderDisplayItem, section
-        ).also {
-            it.show(ft, SYNCED_FOLDER_PREFERENCES_DIALOG_TAG)
+        val fragmentTransaction = supportFragmentManager.beginTransaction().apply {
+            addToBackStack(null)
+        }
+
+        dialogFragment = SyncedFolderPreferencesDialogFragment.newInstance(
+            syncedFolderDisplayItem,
+            section
+        )
+
+        dialogFragment?.let {
+            if (isDialogFragmentReady(it)) {
+                it.show(fragmentTransaction, SYNCED_FOLDER_PREFERENCES_DIALOG_TAG)
+            } else {
+                Log_OC.d(TAG, "SyncedFolderPreferencesDialogFragment not ready")
+            }
         }
     }
 
@@ -617,22 +628,28 @@ class SyncedFoldersActivity :
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == SyncedFolderPreferencesDialogFragment.REQUEST_CODE__SELECT_REMOTE_FOLDER &&
-            resultCode == RESULT_OK && syncedFolderPreferencesDialogFragment != null
+            resultCode == RESULT_OK && dialogFragment != null
         ) {
-            val chosenFolder: OCFile = data!!.getParcelableExtra(FolderPickerActivity.EXTRA_FOLDER)!!
-            syncedFolderPreferencesDialogFragment!!.setRemoteFolderSummary(chosenFolder.remotePath)
+            val chosenFolder: OCFile? = FolderPickerActivity.EXTRA_FOLDER?.let {
+                data?.getParcelableArgument(it, OCFile::class.java)
+            }
+            dialogFragment?.setRemoteFolderSummary(chosenFolder?.remotePath)
         } else if (
             requestCode == SyncedFolderPreferencesDialogFragment.REQUEST_CODE__SELECT_LOCAL_FOLDER &&
-            resultCode == RESULT_OK && syncedFolderPreferencesDialogFragment != null
+            resultCode == RESULT_OK && dialogFragment != null
         ) {
             val localPath = data!!.getStringExtra(UploadFilesActivity.EXTRA_CHOSEN_FILES)
-            syncedFolderPreferencesDialogFragment!!.setLocalFolderSummary(localPath)
+            dialogFragment!!.setLocalFolderSummary(localPath)
         } else {
             super.onActivityResult(requestCode, resultCode, data)
         }
     }
 
-    override fun onSaveSyncedFolderPreference(syncedFolder: SyncedFolderParcelable) {
+    override fun onSaveSyncedFolderPreference(syncedFolder: SyncedFolderParcelable?) {
+        if (syncedFolder == null) {
+            return
+        }
+
         // custom folders newly created aren't in the list already,
         // so triggering a refresh
         if (MediaFolderType.CUSTOM == syncedFolder.type && syncedFolder.id == SyncedFolder.UNPERSISTED_ID) {
@@ -651,7 +668,10 @@ class SyncedFoldersActivity :
                 clock.currentTime,
                 File(syncedFolder.localPath).name,
                 syncedFolder.type,
-                syncedFolder.isHidden
+                syncedFolder.isHidden,
+                syncedFolder.subFolderRule,
+                syncedFolder.isExcludeHidden,
+                SyncedFolder.NOT_SCANNED_YET
             )
             saveOrUpdateSyncedFolder(newCustomFolder)
             adapter.addSyncFolderItem(newCustomFolder)
@@ -668,13 +688,15 @@ class SyncedFoldersActivity :
                 syncedFolder.isSubfolderByDate,
                 syncedFolder.uploadAction,
                 syncedFolder.nameCollisionPolicy.serialize(),
-                syncedFolder.isEnabled
+                syncedFolder.isEnabled,
+                syncedFolder.subFolderRule,
+                syncedFolder.isExcludeHidden
             )
             saveOrUpdateSyncedFolder(item)
 
             adapter.notifyItemChanged(adapter.getSectionHeaderIndex(syncedFolder.section))
         }
-        syncedFolderPreferencesDialogFragment = null
+        dialogFragment = null
         if (syncedFolder.isEnabled) {
             showBatteryOptimizationInfo()
         }
@@ -688,22 +710,24 @@ class SyncedFoldersActivity :
             // existing synced folder setup to be updated
             syncedFolderProvider.updateSyncFolder(item)
             if (item.isEnabled) {
-                backgroundJobManager.startImmediateFilesSyncJob(skipCustomFolders = false, overridePowerSaving = false)
+                backgroundJobManager.startImmediateFilesSyncJob(item.id, overridePowerSaving = false)
             } else {
                 val syncedFolderInitiatedKey = KEY_SYNCED_FOLDER_INITIATED_PREFIX + item.id
-                val arbitraryDataProvider = ArbitraryDataProvider(MainApp.getAppContext().contentResolver)
+                val arbitraryDataProvider =
+                    ArbitraryDataProviderImpl(MainApp.getAppContext())
                 arbitraryDataProvider.deleteKeyForAccount("global", syncedFolderInitiatedKey)
             }
         }
     }
 
     private fun storeSyncedFolder(item: SyncedFolderDisplayItem) {
-        val arbitraryDataProvider = ArbitraryDataProvider(MainApp.getAppContext().contentResolver)
+        val arbitraryDataProvider =
+            ArbitraryDataProviderImpl(MainApp.getAppContext())
         val storedId = syncedFolderProvider.storeSyncedFolder(item)
         if (storedId != -1L) {
             item.id = storedId
             if (item.isEnabled) {
-                backgroundJobManager.startImmediateFilesSyncJob(skipCustomFolders = false, overridePowerSaving = false)
+                backgroundJobManager.startImmediateFilesSyncJob(item.id, overridePowerSaving = false)
             } else {
                 val syncedFolderInitiatedKey = KEY_SYNCED_FOLDER_INITIATED_PREFIX + item.id
                 arbitraryDataProvider.deleteKeyForAccount("global", syncedFolderInitiatedKey)
@@ -712,10 +736,14 @@ class SyncedFoldersActivity :
     }
 
     override fun onCancelSyncedFolderPreference() {
-        syncedFolderPreferencesDialogFragment = null
+        dialogFragment = null
     }
 
-    override fun onDeleteSyncedFolderPreference(syncedFolder: SyncedFolderParcelable) {
+    override fun onDeleteSyncedFolderPreference(syncedFolder: SyncedFolderParcelable?) {
+        if (syncedFolder == null) {
+            return
+        }
+
         syncedFolderProvider.deleteSyncedFolder(syncedFolder.id)
         adapter.removeItem(syncedFolder.section)
     }
@@ -733,6 +761,7 @@ class SyncedFoldersActivity :
      * @param uploadAction    upload action
      * @param nameCollisionPolicy what to do on name collision
      * @param enabled         is sync enabled
+     * @param excludeHidden   exclude hidden file or folder, for {@link MediaFolderType#CUSTOM} only
      */
     @Suppress("LongParameterList")
     private fun updateSyncedFolderItem(
@@ -746,7 +775,9 @@ class SyncedFoldersActivity :
         subfolderByDate: Boolean,
         uploadAction: Int,
         nameCollisionPolicy: Int,
-        enabled: Boolean
+        enabled: Boolean,
+        subFolderRule: SubFolderRule,
+        excludeHidden: Boolean
     ) {
         item.id = id
         item.localPath = localPath
@@ -758,6 +789,8 @@ class SyncedFoldersActivity :
         item.uploadAction = uploadAction
         item.setNameCollisionPolicy(nameCollisionPolicy)
         item.setEnabled(enabled, clock.currentTime)
+        item.setSubFolderRule(subFolderRule)
+        item.setExcludeHidden(excludeHidden)
     }
 
     override fun onRequestPermissionsResult(
@@ -773,7 +806,7 @@ class SyncedFoldersActivity :
                     load(getItemsDisplayedPerFolder(), true)
                 } else {
                     // permission denied --> request again
-                    PermissionUtil.requestExternalStoragePermission(this, themeSnackbarUtils, true)
+                    PermissionUtil.requestExternalStoragePermission(this, viewThemeUtils, true)
                 }
             }
             else -> super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -787,7 +820,8 @@ class SyncedFoldersActivity :
                 .setMessage(getString(R.string.battery_optimization_message))
                 .setPositiveButton(getString(R.string.battery_optimization_disable)) { _, _ ->
                     // show instant upload
-                    @SuppressLint("BatteryLife") val intent = Intent(
+                    @SuppressLint("BatteryLife")
+                    val intent = Intent(
                         Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                         Uri.parse("package:" + BuildConfig.APPLICATION_ID)
                     )
@@ -799,8 +833,7 @@ class SyncedFoldersActivity :
                 .setIcon(R.drawable.ic_battery_alert)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 val alertDialog = alertDialogBuilder.show()
-                themeButtonUtils.themeBorderlessButton(
-                    themeColorUtils,
+                viewThemeUtils.platform.colorTextButtons(
                     alertDialog.getButton(AlertDialog.BUTTON_POSITIVE),
                     alertDialog.getButton(AlertDialog.BUTTON_NEUTRAL)
                 )

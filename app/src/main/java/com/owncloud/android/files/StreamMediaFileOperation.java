@@ -1,22 +1,9 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2018 Tobias Kaminsky
- * Copyright (C) 2018 Nextcloud GmbH.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.files;
 
@@ -37,7 +24,7 @@ public class StreamMediaFileOperation extends RemoteOperation {
     private static final int SYNC_CONNECTION_TIMEOUT = 5000;
     private static final String STREAM_MEDIA_URL = "/ocs/v2.php/apps/dav/api/v1/direct";
 
-    private String fileID;
+    private final long fileID;
 
     // JSON node names
     private static final String NODE_OCS = "ocs";
@@ -45,7 +32,7 @@ public class StreamMediaFileOperation extends RemoteOperation {
     private static final String NODE_URL = "url";
     private static final String JSON_FORMAT = "?format=json";
 
-    public StreamMediaFileOperation(String fileID) {
+    public StreamMediaFileOperation(long fileID) {
         this.fileID = fileID;
     }
 
@@ -55,7 +42,7 @@ public class StreamMediaFileOperation extends RemoteOperation {
 
         try {
             postMethod = new Utf8PostMethod(client.getBaseUri() + STREAM_MEDIA_URL + JSON_FORMAT);
-            postMethod.setParameter("fileId", fileID);
+            postMethod.setParameter("fileId", String.valueOf(fileID));
 
             // remote request
             postMethod.addRequestHeader(OCS_API_HEADER, OCS_API_HEADER_VALUE);

@@ -1,27 +1,16 @@
 /*
- *   Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author Andy Scherzinger
- *   @author TSI-mc
- *   Copyright (C) 2016 Andy Scherzinger
- *   Copyright (C) 2016 Nextcloud
- *   Copyright (C) 2016 ownCloud Inc.
- *   Copyright (C) 2022 TSI-mc
- *
- *   This program is free software; you can redistribute it and/or
- *   modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- *   License as published by the Free Software Foundation; either
- *   version 3 of the License, or any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- *   You should have received a copy of the GNU Affero General Public
- *   License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 ZetaTom
+ * SPDX-FileCopyrightText: 2023 Parneet Singh <gurayaparneet@gmail.com>
+ * SPDX-FileCopyrightText: 2022 Brey Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2022 TSI-mc
+ * SPDX-FileCopyrightText: 2020 Joris Bodin <joris.bodin@infomaniak.com>
+ * SPDX-FileCopyrightText: 2016-2022 Andy Scherzinger
+ * SPDX-FileCopyrightText: 2018-2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2016 Nextcloud
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.activity;
 
 import android.animation.AnimatorInflater;
@@ -37,6 +26,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.google.android.material.appbar.AppBarLayout;
+import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.textview.MaterialTextView;
@@ -44,22 +34,16 @@ import com.nextcloud.client.di.Injectable;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.FileDataStorageManager;
 import com.owncloud.android.datamodel.OCFile;
-import com.owncloud.android.utils.theme.ThemeButtonUtils;
 import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
-import com.owncloud.android.utils.theme.ThemeLayoutUtils;
-import com.owncloud.android.utils.theme.ThemeToolbarUtils;
 import com.owncloud.android.utils.theme.ThemeUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import javax.inject.Inject;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
-import androidx.annotation.VisibleForTesting;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.widget.AppCompatSpinner;
-import androidx.appcompat.widget.Toolbar;
-import androidx.core.content.ContextCompat;
 
 /**
  * Base class providing toolbar registration functionality, see {@link #setupToolbar(boolean, boolean)}.
@@ -71,7 +55,7 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
 
     private AppBarLayout mAppBar;
     private RelativeLayout mDefaultToolbar;
-    private Toolbar mToolbar;
+    private MaterialToolbar mToolbar;
     private MaterialCardView mHomeSearchToolbar;
     private ImageView mPreviewImage;
     private FrameLayout mPreviewImageContainer;
@@ -81,22 +65,16 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
     private boolean isHomeSearchToolbarShow = false;
 
     @Inject public ThemeColorUtils themeColorUtils;
-    @Inject public ThemeLayoutUtils themeLayoutUtils;
-    @Inject public ThemeToolbarUtils themeToolbarUtils;
     @Inject public ThemeUtils themeUtils;
-    @Inject public ThemeDrawableUtils themeDrawableUtils;
-    @Inject public ThemeButtonUtils themeButtonUtils;
+    @Inject public ViewThemeUtils viewThemeUtils;
 
     /**
      * Toolbar setup that must be called in implementer's {@link #onCreate} after {@link #setContentView} if they want
      * to use the toolbar.
      */
     private void setupToolbar(boolean isHomeSearchToolbarShow, boolean showSortListButtonGroup) {
-        int fontColor = themeColorUtils.appBarPrimaryFontColor(this);
-
         mToolbar = findViewById(R.id.toolbar);
         setSupportActionBar(mToolbar);
-        themeToolbarUtils.colorStatusBar(this);
 
         mAppBar = findViewById(R.id.appbar);
         mDefaultToolbar = findViewById(R.id.default_toolbar);
@@ -120,13 +98,26 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
 
         mToolbarSpinner = findViewById(R.id.toolbar_spinner);
 
-        if (mToolbar.getOverflowIcon() != null) {
-            themeDrawableUtils.tintDrawable(mToolbar.getOverflowIcon(), fontColor);
+        viewThemeUtils.material.themeToolbar(mToolbar);
+        viewThemeUtils.material.colorToolbarOverflowIcon(mToolbar);
+        viewThemeUtils.platform.themeStatusBar(this);
+        viewThemeUtils.material.colorMaterialTextButton(mSwitchAccountButton);
+    }
+
+    public void setupToolbarShowOnlyMenuButtonAndTitle(String title, View.OnClickListener toggleDrawer) {
+        setupToolbar(false, false);
+
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayShowTitleEnabled(false);
         }
 
-        if (mToolbar.getNavigationIcon() != null) {
-            themeDrawableUtils.tintDrawable(mToolbar.getNavigationIcon(), fontColor);
-        }
+        LinearLayout toolbar = findViewById(R.id.toolbar_linear_layout);
+        MaterialButton menuButton = findViewById(R.id.toolbar_menu_button);
+        MaterialTextView titleTextView = findViewById(R.id.toolbar_title);
+        titleTextView.setText(title);
+        toolbar.setVisibility(View.VISIBLE);
+        menuButton.setOnClickListener(toggleDrawer);
     }
 
     public void setupToolbar() {
@@ -171,18 +162,21 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
 
     @SuppressLint("PrivateResource")
     private void showHomeSearchToolbar(boolean isShow) {
+        viewThemeUtils.material.themeToolbar(mToolbar);
         if (isShow) {
+            viewThemeUtils.platform.resetStatusBar(this);
             mAppBar.setStateListAnimator(AnimatorInflater.loadStateListAnimator(mAppBar.getContext(),
                                                                                 R.animator.appbar_elevation_off));
             mDefaultToolbar.setVisibility(View.GONE);
             mHomeSearchToolbar.setVisibility(View.VISIBLE);
-            themeToolbarUtils.colorStatusBar(this, ContextCompat.getColor(this, R.color.bg_default));
+            viewThemeUtils.material.themeCardView(mHomeSearchToolbar);
+            viewThemeUtils.material.themeSearchBarText(mSearchText);
         } else {
             mAppBar.setStateListAnimator(AnimatorInflater.loadStateListAnimator(mAppBar.getContext(),
                                                                                 R.animator.appbar_elevation_on));
+            viewThemeUtils.platform.themeStatusBar(this);
             mDefaultToolbar.setVisibility(View.VISIBLE);
             mHomeSearchToolbar.setVisibility(View.GONE);
-            themeToolbarUtils.colorStatusBar(this);
         }
     }
 
@@ -190,19 +184,17 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
      * Updates title bar and home buttons (state and icon).
      */
     public void updateActionBarTitleAndHomeButtonByString(String title) {
-        String titleToSet = getString(R.string.app_name);    // default
-
-        if (title != null) {
-            titleToSet = title;
-        }
-
         // set & color the chosen title
         ActionBar actionBar = getSupportActionBar();
-        themeToolbarUtils.setColoredTitle(actionBar, titleToSet, this);
 
         // set home button properties
         if (actionBar != null) {
-            actionBar.setDisplayShowTitleEnabled(true);
+            if (title != null) {
+                actionBar.setTitle(title);
+                actionBar.setDisplayShowTitleEnabled(true);
+            } else {
+                actionBar.setDisplayShowTitleEnabled(false);
+            }
         }
     }
 
@@ -213,6 +205,7 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
      * @return <code>true</code> if it is <code>null</code> or the root folder, else returns <code>false</code>
      */
     public boolean isRoot(OCFile file) {
+
         return file == null || (file.isFolder() && file.getParentId() == FileDataStorageManager.ROOT_PARENT_ID);
     }
 
@@ -229,7 +222,6 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
     /**
      * Hides the toolbar's info box.
      */
-    @VisibleForTesting
     public final void hideInfoBox() {
         mInfoBox.setVisibility(View.GONE);
     }
@@ -254,6 +246,9 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
         findViewById(R.id.sort_list_button_group).setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
+    public boolean sortListGroupVisibility(){
+        return findViewById(R.id.sort_list_button_group).getVisibility() == View.VISIBLE;
+    }
     /**
      * Change the bitmap for the toolbar's preview image.
      *
@@ -291,12 +286,15 @@ public abstract class ToolbarActivity extends BaseActivity implements Injectable
 
     public void updateToolbarSubtitle(@NonNull String subtitle) {
         ActionBar actionBar = getSupportActionBar();
-        themeToolbarUtils.setColoredSubtitle(actionBar, subtitle, this);
+        if (actionBar != null) {
+            actionBar.setSubtitle(subtitle);
+            viewThemeUtils.androidx.themeActionBarSubtitle(this, actionBar);
+        }
     }
 
     public void clearToolbarSubtitle() {
         ActionBar actionBar = getSupportActionBar();
-        if(actionBar != null){
+        if (actionBar != null) {
             actionBar.setSubtitle(null);
         }
     }

@@ -1,26 +1,17 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author Bartek Przybylski
- *   @author David A. Velasco
- *   Copyright (C) 2012  Bartek Przybylski
- *   Copyright (C) 2016 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2023 Alper Ozturk <alper.ozturk@nextcloud.com>
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2018 Mario Danic <mario@lovelyhq.com>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2012-2016 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2012 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.datamodel;
-
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -34,20 +25,25 @@ import com.owncloud.android.lib.common.network.WebdavEntry;
 import com.owncloud.android.lib.common.network.WebdavUtils;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.lib.resources.files.model.FileLockType;
+import com.owncloud.android.lib.resources.files.model.GeoLocation;
+import com.owncloud.android.lib.resources.files.model.ImageDimension;
 import com.owncloud.android.lib.resources.files.model.ServerFileInterface;
 import com.owncloud.android.lib.resources.shares.ShareeUser;
 import com.owncloud.android.utils.MimeType;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.content.FileProvider;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import third_parties.daveKoeller.AlphanumComparator;
 
 public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterface {
+
     private final static String PERMISSION_SHARED_WITH_ME = "S";
     @VisibleForTesting
     public final static String PERMISSION_CAN_RESHARE = "R";
@@ -79,16 +75,20 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
     private long lastSyncDateForProperties;
     private long lastSyncDateForData;
     private boolean previewAvailable;
+    private String livePhoto;
+    public OCFile livePhotoVideo;
     private String etag;
     private String etagOnServer;
     private boolean sharedViaLink;
     private String permissions;
+    private long localId; // unique fileId for the file within the instance
     private String remoteId; // The fileid namespaced by the instance fileId, globally unique
     private boolean updateThumbnailNeeded;
     private boolean downloading;
     private String etagInConflict; // Only saves file etag in the server, when there is a conflict
     private boolean sharedWithSharee;
     private boolean favorite;
+    private boolean hidden;
     private boolean encrypted;
     private WebdavEntry.MountType mountType;
     private int unreadCommentsCount;
@@ -110,10 +110,16 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
     private long lockTimeout;
     @Nullable
     private String lockToken;
+    @Nullable
+    private ImageDimension imageDimension;
+    private long e2eCounter = -1;
+    @Nullable
+    private GeoLocation geolocation;
+    private List<String> tags = new ArrayList<>();
 
     /**
-     * URI to the local path of the file contents, if stored in the device; cached after first call to {@link
-     * #getStorageUri()}
+     * URI to the local path of the file contents, if stored in the device; cached after first call to
+     * {@link #getStorageUri()}
      */
     private Uri localUri;
 
@@ -164,12 +170,14 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         etagOnServer = source.readString();
         sharedViaLink = source.readInt() == 1;
         permissions = source.readString();
+        localId = source.readLong();
         remoteId = source.readString();
         updateThumbnailNeeded = source.readInt() == 1;
         downloading = source.readInt() == 1;
         etagInConflict = source.readString();
         sharedWithSharee = source.readInt() == 1;
         favorite = source.readInt() == 1;
+        hidden = source.readInt() == 1;
         encrypted = source.readInt() == 1;
         ownerId = source.readString();
         ownerDisplayName = source.readString();
@@ -185,6 +193,7 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         lockTimestamp = source.readLong();
         lockTimeout = source.readLong();
         lockToken = source.readString();
+        livePhoto = source.readString();
     }
 
     @Override
@@ -206,12 +215,14 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         dest.writeString(etagOnServer);
         dest.writeInt(sharedViaLink ? 1 : 0);
         dest.writeString(permissions);
+        dest.writeLong(localId);
         dest.writeString(remoteId);
         dest.writeInt(updateThumbnailNeeded ? 1 : 0);
         dest.writeInt(downloading ? 1 : 0);
         dest.writeString(etagInConflict);
         dest.writeInt(sharedWithSharee ? 1 : 0);
         dest.writeInt(favorite ? 1 : 0);
+        dest.writeInt(hidden ? 1 : 0);
         dest.writeInt(encrypted ? 1 : 0);
         dest.writeString(ownerId);
         dest.writeString(ownerDisplayName);
@@ -227,6 +238,15 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         dest.writeLong(lockTimestamp);
         dest.writeLong(lockTimeout);
         dest.writeString(lockToken);
+        dest.writeString(livePhoto);
+    }
+
+    public String getLinkedFileIdForLivePhoto() {
+        return livePhoto;
+    }
+
+    public void setLivePhoto(String livePhoto) {
+        this.livePhoto = livePhoto;
     }
 
     public void setDecryptedRemotePath(String path) {
@@ -282,8 +302,7 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
     }
 
     /**
-     * Can be used to check, whether or not this file exists in the database
-     * already
+     * Can be used to check, whether or not this file exists in the database already
      *
      * @return true, if the file exists in the database
      */
@@ -454,12 +473,14 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         Log_OC.d(TAG, "OCFile name changing from " + remotePath);
         if (!TextUtils.isEmpty(name) && !name.contains(PATH_SEPARATOR) && !ROOT_PATH.equals(remotePath)) {
             String parent = new File(this.getRemotePath()).getParent();
-            parent = parent.endsWith(PATH_SEPARATOR) ? parent : parent + PATH_SEPARATOR;
-            remotePath = parent + name;
-            if (isFolder()) {
-                remotePath += PATH_SEPARATOR;
+            if (parent != null) {
+                parent = parent.endsWith(PATH_SEPARATOR) ? parent : parent + PATH_SEPARATOR;
+                remotePath = parent + name;
+                if (isFolder()) {
+                    remotePath += PATH_SEPARATOR;
+                }
+                Log_OC.d(TAG, "OCFile name changed to " + remotePath);
             }
-            Log_OC.d(TAG, "OCFile name changed to " + remotePath);
         }
     }
 
@@ -484,12 +505,14 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         etagOnServer = null;
         sharedViaLink = false;
         permissions = null;
+        localId = -1;
         remoteId = null;
         updateThumbnailNeeded = false;
         downloading = false;
         etagInConflict = null;
         sharedWithSharee = false;
         favorite = false;
+        hidden = false;
         encrypted = false;
         mountType = WebdavEntry.MountType.INTERNAL;
         richWorkspace = "";
@@ -502,6 +525,8 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         lockTimestamp = 0;
         lockTimeout = 0;
         lockToken = null;
+        livePhoto = null;
+        imageDimension = null;
     }
 
     /**
@@ -511,7 +536,11 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
      */
     public String getParentRemotePath() {
         String parentPath = new File(this.getRemotePath()).getParent();
-        return parentPath.endsWith(PATH_SEPARATOR) ? parentPath : parentPath + PATH_SEPARATOR;
+        if (parentPath != null) {
+            return parentPath.endsWith(PATH_SEPARATOR) ? parentPath : parentPath + PATH_SEPARATOR;
+        } else {
+            return null;
+        }
     }
 
     @Override
@@ -591,16 +620,16 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
     }
 
     /**
-     * The unique fileId for the file within the instance
-     *
-     * @return file fileId, unique within the instance
+     * unique fileId for the file within the instance
      */
-    @Nullable
-    public String getLocalId() {
-        if (getRemoteId() != null) {
-            return getRemoteId().substring(0, 8).replaceAll("^0*", "");
+    @SuppressFBWarnings("STT")
+    public long getLocalId() {
+        if (localId > 0) {
+            return localId;
+        } else if (remoteId != null && remoteId.length() > 8) {
+            return Long.parseLong(remoteId.substring(0, 8).replaceAll("^0*", ""));
         } else {
-            return null;
+            return -1;
         }
     }
 
@@ -628,6 +657,26 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         return permissions != null && permissions.contains(PERMISSION_GROUPFOLDER);
     }
 
+    public Integer getFileOverlayIconId(boolean isAutoUploadFolder) {
+        if (WebdavEntry.MountType.GROUP == mountType || isGroupFolder()) {
+            return R.drawable.ic_folder_overlay_account_group;
+        } else if (sharedViaLink && !encrypted) {
+            return R.drawable.ic_folder_overlay_link;
+        } else if (isSharedWithMe() || sharedWithSharee) {
+            return R.drawable.ic_folder_overlay_share;
+        } else if (encrypted) {
+            return R.drawable.ic_folder_overlay_key;
+        } else if (WebdavEntry.MountType.EXTERNAL == mountType) {
+            return R.drawable.ic_folder_overlay_external;
+        } else if (locked) {
+            return R.drawable.ic_folder_overlay_lock;
+        } else if (isAutoUploadFolder) {
+            return R.drawable.ic_folder_overlay_upload;
+        } else {
+            return null;
+        }
+    }
+
     public static final Parcelable.Creator<OCFile> CREATOR = new Parcelable.Creator<OCFile>() {
 
         @Override
@@ -641,6 +690,9 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         }
     };
 
+    /**
+     * Android's internal ID of the file
+     */
     public long getFileId() {
         return this.fileId;
     }
@@ -732,6 +784,10 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
         return this.favorite;
     }
 
+    public boolean shouldHide() {
+        return this.hidden;
+    }
+
     public boolean isEncrypted() {
         return this.encrypted;
     }
@@ -766,6 +822,10 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
 
     public void setFileId(long fileId) {
         this.fileId = fileId;
+    }
+
+    public void setLocalId(long localId) {
+        this.localId = localId;
     }
 
     public void setParentId(long parentId) {
@@ -838,6 +898,10 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
 
     public void setFavorite(boolean favorite) {
         this.favorite = favorite;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 
     public void setEncrypted(boolean encrypted) {
@@ -947,5 +1011,43 @@ public class OCFile implements Parcelable, Comparable<OCFile>, ServerFileInterfa
 
     public void setLockToken(@Nullable String lockToken) {
         this.lockToken = lockToken;
+    }
+
+    public void setImageDimension(@Nullable ImageDimension imageDimension) {
+        this.imageDimension = imageDimension;
+    }
+
+    @Nullable
+    public ImageDimension getImageDimension() {
+        return imageDimension;
+    }
+
+    public void setGeoLocation(@Nullable GeoLocation geolocation) {
+        this.geolocation = geolocation;
+    }
+
+    @Nullable
+    public GeoLocation getGeoLocation() {
+        return geolocation;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags;
+    }
+
+    public long getE2eCounter() {
+        return e2eCounter;
+    }
+
+    public void setE2eCounter(@Nullable Long e2eCounter) {
+        if (e2eCounter == null) {
+            this.e2eCounter = -1;
+        } else {
+            this.e2eCounter = e2eCounter;
+        }
     }
 }

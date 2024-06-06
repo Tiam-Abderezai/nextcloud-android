@@ -1,24 +1,13 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   @author David A. Velasco
- *   @author Chris Narkiewicz
- *   @author Andy Scherzinger
- *   Copyright (C) 2016 ownCloud Inc.
- *   Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *   Copyright (C) 2020 Andy Scherzinger
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2023 Parneet Singh <gurayaparneet@gmail.com>
+ * SPDX-FileCopyrightText: 2020 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2013 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.ui.preview;
 
@@ -29,12 +18,13 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -43,84 +33,100 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnTouchListener;
 import android.view.ViewGroup;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.ui.StyledPlayerControlView;
 import com.nextcloud.client.account.User;
 import com.nextcloud.client.account.UserAccountManager;
 import com.nextcloud.client.di.Injectable;
+import com.nextcloud.client.jobs.BackgroundJobManager;
+import com.nextcloud.client.jobs.download.FileDownloadHelper;
+import com.nextcloud.client.media.ExoplayerListener;
 import com.nextcloud.client.media.NextcloudExoPlayer;
 import com.nextcloud.client.media.PlayerServiceConnection;
 import com.nextcloud.client.network.ClientFactory;
 import com.nextcloud.common.NextcloudClient;
+import com.nextcloud.ui.fileactions.FileActionsBottomSheet;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
+import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.FragmentPreviewMediaBinding;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.datamodel.ThumbnailsCacheManager;
-import com.owncloud.android.files.FileMenuFilter;
 import com.owncloud.android.files.StreamMediaFileOperation;
 import com.owncloud.android.lib.common.OwnCloudClient;
 import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.ui.activity.DrawerActivity;
-import com.owncloud.android.ui.activity.FileActivity;
-import com.owncloud.android.ui.activity.FileDisplayActivity;
 import com.owncloud.android.ui.dialog.ConfirmationDialogFragment;
 import com.owncloud.android.ui.dialog.RemoveFilesDialogFragment;
 import com.owncloud.android.ui.fragment.FileFragment;
 import com.owncloud.android.utils.MimeTypeUtil;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Executors;
 
 import javax.inject.Inject;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
 import androidx.annotation.StringRes;
-import androidx.appcompat.widget.AppCompatImageButton;
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.fragment.app.FragmentActivity;
+import androidx.fragment.app.FragmentManager;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.ExoPlayer;
 
 /**
  * This fragment shows a preview of a downloaded media file (audio or video).
  * <p>
- * Trying to get an instance with NULL {@link OCFile} or ownCloud {@link User} values will produce an {@link
- * IllegalStateException}.
+ * Trying to get an instance with NULL {@link OCFile} or ownCloud {@link User} values will produce an
+ * {@link IllegalStateException}.
  * <p>
  * By now, if the {@link OCFile} passed is not downloaded, an {@link IllegalStateException} is generated on
  * instantiation too.
  */
 public class PreviewMediaFragment extends FileFragment implements OnTouchListener,
-    Injectable, StyledPlayerControlView.OnFullScreenModeChangedListener {
+    Injectable {
 
     private static final String TAG = PreviewMediaFragment.class.getSimpleName();
 
     public static final String EXTRA_FILE = "FILE";
     public static final String EXTRA_USER = "USER";
+    public static final String EXTRA_AUTOPLAY = "AUTOPLAY";
+    public static final String EXTRA_START_POSITION = "START_POSITION";
+
     private static final String EXTRA_PLAY_POSITION = "PLAY_POSITION";
     private static final String EXTRA_PLAYING = "PLAYING";
     private static final double MIN_DENSITY_RATIO = 24.0;
+
 
     private static final String FILE = "FILE";
     private static final String USER = "USER";
     private static final String PLAYBACK_POSITION = "PLAYBACK_POSITION";
     private static final String AUTOPLAY = "AUTOPLAY";
+    private static final String IS_LIVE_PHOTO = "IS_LIVE_PHOTO";
 
     private User user;
     private long savedPlaybackPosition;
 
     private boolean autoplay;
+    private boolean isLivePhoto;
     private boolean prepared;
     private PlayerServiceConnection mediaPlayerServiceConnection;
 
     private Uri videoUri;
     @Inject ClientFactory clientFactory;
     @Inject UserAccountManager accountManager;
+    @Inject BackgroundJobManager backgroundJobManager;
     FragmentPreviewMediaBinding binding;
     private ViewGroup emptyListView;
     private ExoPlayer exoPlayer;
+    private NextcloudClient nextcloudClient;
 
     /**
      * Creates a fragment to preview a file.
@@ -133,7 +139,8 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     public static PreviewMediaFragment newInstance(OCFile fileToDetail,
                                                    User user,
                                                    long startPlaybackPosition,
-                                                   boolean autoplay) {
+                                                   boolean autoplay,
+                                                   boolean isLivePhoto) {
         PreviewMediaFragment previewMediaFragment = new PreviewMediaFragment();
 
         Bundle bundle = new Bundle();
@@ -141,6 +148,7 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
         bundle.putParcelable(USER, user);
         bundle.putLong(PLAYBACK_POSITION, startPlaybackPosition);
         bundle.putBoolean(AUTOPLAY, autoplay);
+        bundle.putBoolean(IS_LIVE_PHOTO, isLivePhoto);
 
         previewMediaFragment.setArguments(bundle);
 
@@ -157,6 +165,7 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
      */
     public PreviewMediaFragment() {
         super();
+
         savedPlaybackPosition = 0;
         autoplay = true;
     }
@@ -168,11 +177,14 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
 
         Bundle bundle = getArguments();
 
-        setFile(bundle.getParcelable(FILE));
-        user = bundle.getParcelable(USER);
+        setFile(BundleExtensionsKt.getParcelableArgument(bundle, FILE, OCFile.class));
+        user = BundleExtensionsKt.getParcelableArgument(bundle, USER, User.class);
+
         savedPlaybackPosition = bundle.getLong(PLAYBACK_POSITION);
         autoplay = bundle.getBoolean(AUTOPLAY);
-        mediaPlayerServiceConnection = new PlayerServiceConnection(getContext());
+        isLivePhoto = bundle.getBoolean(IS_LIVE_PHOTO);
+
+        mediaPlayerServiceConnection = new PlayerServiceConnection(requireContext());
     }
 
     @Override
@@ -218,9 +230,9 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
                 throw new IllegalStateException("Instanced with a NULL ownCloud Account");
             }
         } else {
-            file = savedInstanceState.getParcelable(EXTRA_FILE);
+            file = BundleExtensionsKt.getParcelableArgument(savedInstanceState, EXTRA_FILE, OCFile.class);
             setFile(file);
-            user = savedInstanceState.getParcelable(EXTRA_USER);
+            user = BundleExtensionsKt.getParcelableArgument(savedInstanceState, EXTRA_USER, User.class);
             savedPlaybackPosition = savedInstanceState.getInt(EXTRA_PLAY_POSITION);
             autoplay = savedInstanceState.getBoolean(EXTRA_PLAYING);
         }
@@ -259,7 +271,7 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
                         setThumbnailForAudio(file);
                     }
                 } catch (Throwable t) {
-                    binding.imagePreview.setImageResource(R.drawable.logo);
+                    setGenericThumbnail();
                 }
             }
         }
@@ -272,7 +284,21 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
         if (thumbnail != null) {
             binding.imagePreview.setImageBitmap(thumbnail);
         } else {
-            binding.imagePreview.setImageResource(R.drawable.logo);
+            setGenericThumbnail();
+        }
+    }
+
+    /**
+     * Set generic icon (logo) as placeholder for thumbnail in preview.
+     */
+    private void setGenericThumbnail() {
+        Drawable logo = AppCompatResources.getDrawable(requireContext(), R.drawable.logo);
+        if (logo != null) {
+            if (!getResources().getBoolean(R.bool.is_branded_client)) {
+                // only colour logo of non-branded client
+                DrawableCompat.setTint(logo, getResources().getColor(R.color.primary, requireContext().getTheme()));
+            }
+            binding.imagePreview.setImageDrawable(logo);
         }
     }
 
@@ -299,6 +325,15 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     public void onStart() {
         super.onStart();
         Log_OC.v(TAG, "onStart");
+
+        @NonNull Context context;
+        if (getContext() != null) {
+            context = getContext();
+        } else {
+            context = MainApp.getAppContext();
+        }
+
+
         OCFile file = getFile();
         if (file != null) {
             // bind to any existing player
@@ -318,18 +353,22 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
                 if (exoPlayer != null) {
                     playVideo();
                 } else {
-                    final Handler handler = new Handler();
+                    final Handler handler = new Handler(Looper.getMainLooper());
                     Executors.newSingleThreadExecutor().execute(() -> {
                         try {
-                            final NextcloudClient client = clientFactory.createNextcloudClient(accountManager.getUser());
-                            handler.post(() ->{
-                                exoPlayer = NextcloudExoPlayer.createNextcloudExoplayer(requireContext(), client);
+                            nextcloudClient = clientFactory.createNextcloudClient(accountManager.getUser());
+                            handler.post(() -> {
+                                exoPlayer = NextcloudExoPlayer.createNextcloudExoplayer(context, nextcloudClient);
+
+                                exoPlayer.addListener(new ExoplayerListener(context, binding.exoplayerView, exoPlayer, () -> {
+                                    goBackToLivePhoto();
+                                    return null;
+                                }));
+
                                 playVideo();
                             });
                         } catch (ClientFactory.CreationException e) {
-                            handler.post(() -> {
-                                Log_OC.e(TAG, "error setting up ExoPlayer", e);
-                            });
+                            handler.post(() -> Log_OC.e(TAG, "error setting up ExoPlayer", e));
                         }
                     });
                 }
@@ -337,24 +376,28 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
         }
     }
 
-    private void setupVideoView() {
-        binding.exoplayerView.setPlayer(exoPlayer);
-        LinearLayout linearLayout = binding.exoplayerView.findViewById(R.id.exo_center_controls);
-
-        if (linearLayout.getChildCount() == 5) {
-            AppCompatImageButton fullScreenButton = new AppCompatImageButton(requireContext());
-            fullScreenButton.setImageResource(R.drawable.exo_styled_controls_fullscreen_exit);
-            fullScreenButton.setLayoutParams(new LinearLayout.LayoutParams(143, 143));
-            fullScreenButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            fullScreenButton.setBackgroundColor(Color.TRANSPARENT);
-
-            fullScreenButton.setOnClickListener(l -> {
-                startFullScreenVideo();
-            });
-
-            linearLayout.addView(fullScreenButton);
-            linearLayout.invalidate();
+    private void goBackToLivePhoto() {
+        if (!isLivePhoto) {
+            return;
         }
+
+        showActionBar();
+
+        requireActivity().getSupportFragmentManager().popBackStack();
+    }
+
+    private void showActionBar() {
+        Activity currentActivity = requireActivity();
+        if (currentActivity instanceof PreviewImageActivity activity) {
+            activity.toggleActionBarVisibility(false);
+        }
+    }
+    @OptIn(markerClass = UnstableApi.class)
+    private void setupVideoView() {
+        binding.exoplayerView.setShowNextButton(false);
+        binding.exoplayerView.setShowPreviousButton(false);
+        binding.exoplayerView.setPlayer(exoPlayer);
+        binding.exoplayerView.setFullscreenButtonClickListener(isFullScreen -> startFullScreenVideo());
     }
 
     private void stopAudio() {
@@ -365,102 +408,72 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
         super.onCreateOptionsMenu(menu, inflater);
         menu.removeItem(R.id.action_search);
-        inflater.inflate(R.menu.item_file, menu);
+        inflater.inflate(R.menu.custom_menu_placeholder, menu);
     }
 
     @Override
-    public void onPrepareOptionsMenu(@NonNull Menu menu) {
-        super.onPrepareOptionsMenu(menu);
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.custom_menu_placeholder_item) {
+            final OCFile file = getFile();
+            if (containerActivity.getStorageManager() != null && file != null) {
+                // Update the file
+                final OCFile updatedFile = containerActivity.getStorageManager().getFileById(file.getFileId());
+                setFile(updatedFile);
 
-        if (containerActivity.getStorageManager() != null) {
-            User currentUser = accountManager.getUser();
-            FileMenuFilter mf = new FileMenuFilter(
-                getFile(),
-                containerActivity,
-                getActivity(),
-                false,
-                currentUser
-            );
-
-            mf.filter(menu, true);
-        }
-
-        // additional restriction for this fragment
-        // TODO allow renaming in PreviewImageFragment
-        MenuItem item = menu.findItem(R.id.action_rename_file);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        // additional restriction for this fragment
-        item = menu.findItem(R.id.action_select_all);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        // additional restriction for this fragment
-        item = menu.findItem(R.id.action_move);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        // additional restriction for this fragment
-        item = menu.findItem(R.id.action_copy);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        // additional restriction for this fragment
-        item = menu.findItem(R.id.action_favorite);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        // additional restriction for this fragment
-        item = menu.findItem(R.id.action_unset_favorite);
-        if (item != null) {
-            item.setVisible(false);
-            item.setEnabled(false);
-        }
-
-        if (getFile().isSharedWithMe() && !getFile().canReshare()) {
-            // additional restriction for this fragment
-            item = menu.findItem(R.id.action_send_share_file);
-            if (item != null) {
-                item.setVisible(false);
-                item.setEnabled(false);
+                final OCFile fileNew = getFile();
+                if (fileNew != null) {
+                    showFileActions(fileNew);
+                }
             }
         }
+        return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int itemId = item.getItemId();
+    private void showFileActions(OCFile file) {
+        final List<Integer> additionalFilter = new ArrayList<>(
+            Arrays.asList(
+                R.id.action_rename_file,
+                R.id.action_sync_file,
+                R.id.action_move_or_copy,
+                R.id.action_favorite,
+                R.id.action_unset_favorite,
+                R.id.action_pin_to_homescreen
+                         ));
+        if (getFile() != null && getFile().isSharedWithMe() && !getFile().canReshare()) {
+            additionalFilter.add(R.id.action_send_share_file);
+        }
+        final FragmentManager fragmentManager = getChildFragmentManager();
+        FileActionsBottomSheet.newInstance(file, false, additionalFilter)
+            .setResultListener(fragmentManager, this, this::onFileActionChosen)
+            .show(fragmentManager, "actions");
+    }
+
+    public void onFileActionChosen(final int itemId) {
         if (itemId == R.id.action_send_share_file) {
             sendShareFile();
-            return true;
         } else if (itemId == R.id.action_open_file_with) {
             openFile();
-            return true;
         } else if (itemId == R.id.action_remove_file) {
             RemoveFilesDialogFragment dialog = RemoveFilesDialogFragment.newInstance(getFile());
             dialog.show(getFragmentManager(), ConfirmationDialogFragment.FTAG_CONFIRMATION);
-            return true;
         } else if (itemId == R.id.action_see_details) {
             seeDetails();
-            return true;
         } else if (itemId == R.id.action_sync_file) {
             containerActivity.getFileOperationsHelper().syncFile(getFile());
-            return true;
+        } else if (itemId == R.id.action_cancel_sync) {
+            containerActivity.getFileOperationsHelper().cancelTransference(getFile());
         } else if (itemId == R.id.action_stream_media) {
             containerActivity.getFileOperationsHelper().streamMediaFile(getFile());
+        } else if (itemId == R.id.action_export_file) {
+            ArrayList<OCFile> list = new ArrayList<>();
+            list.add(getFile());
+            containerActivity.getFileOperationsHelper().exportFiles(list,
+                                                                    getContext(),
+                                                                    getView(),
+                                                                    backgroundJobManager);
+        } else if (itemId == R.id.action_download_file) {
+            FileDownloadHelper.Companion.instance().downloadFileIfNotStartedBefore(user, getFile());
         }
-        return super.onOptionsItemSelected(item);
     }
 
     /**
@@ -490,7 +503,7 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
             playVideoUri(getFile().getStorageUri());
         } else {
             try {
-                new LoadStreamUrl(this, user, clientFactory).execute(getFile().getRemoteId());
+                new LoadStreamUrl(this, user, clientFactory).execute(getFile().getLocalId());
             } catch (Exception e) {
                 Log_OC.e(TAG, "Loading stream url not possible: " + e);
             }
@@ -500,24 +513,19 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     private void playVideoUri(final Uri uri) {
         binding.progress.setVisibility(View.GONE);
 
-        exoPlayer.addMediaItem(MediaItem.fromUri(uri));
+        exoPlayer.setMediaItem(MediaItem.fromUri(uri));
+        exoPlayer.setPlayWhenReady(autoplay);
         exoPlayer.prepare();
 
         if (savedPlaybackPosition >= 0) {
             exoPlayer.seekTo(savedPlaybackPosition);
         }
 
-        if (autoplay) {
-            exoPlayer.play();
-        }
+        // only autoplay video once
+        autoplay = false;
     }
 
-    @Override
-    public void onFullScreenModeChanged(boolean isFullScreen) {
-        Log_OC.e(TAG, "Fullscreen: " + isFullScreen);
-    }
-
-    private static class LoadStreamUrl extends AsyncTask<String, Void, Uri> {
+    private static class LoadStreamUrl extends AsyncTask<Long, Void, Uri> {
 
         private final ClientFactory clientFactory;
         private final User user;
@@ -530,7 +538,7 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
         }
 
         @Override
-        protected Uri doInBackground(String... fileId) {
+        protected Uri doInBackground(Long... fileId) {
             OwnCloudClient client;
             try {
                 client = clientFactory.create(user);
@@ -578,9 +586,6 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     @Override
     public void onResume() {
         super.onResume();
-        if(getActivity() instanceof FileDisplayActivity){
-            ((FileDisplayActivity) getActivity()).configureToolbarForMediaPreview(getFile());
-        }
         Log_OC.v(TAG, "onResume");
     }
 
@@ -626,14 +631,10 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     }
 
     private void startFullScreenVideo() {
-        Intent intent = new Intent(getActivity(), PreviewVideoActivity.class);
-        intent.putExtra(FileActivity.EXTRA_USER, user);
-        intent.putExtra(FileActivity.EXTRA_FILE, getFile());
-        intent.putExtra(PreviewVideoActivity.EXTRA_AUTOPLAY, exoPlayer.isPlaying());
-        intent.putExtra(PreviewVideoActivity.EXTRA_STREAM_URL, videoUri);
-        exoPlayer.pause();
-        intent.putExtra(PreviewVideoActivity.EXTRA_START_POSITION, exoPlayer.getCurrentPosition());
-        startActivityForResult(intent, FileActivity.REQUEST_CODE__LAST_SHARED + 1);
+        final FragmentActivity activity = getActivity();
+        if (activity != null) {
+            new PreviewVideoFullscreenDialog(activity, nextcloudClient, exoPlayer, binding.exoplayerView).show();
+        }
     }
 
     @Override
@@ -647,8 +648,8 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
         Log_OC.v(TAG, "onActivityResult " + this);
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == Activity.RESULT_OK) {
-            savedPlaybackPosition = data.getLongExtra(PreviewVideoActivity.EXTRA_START_POSITION, 0);
-            autoplay = data.getBooleanExtra(PreviewVideoActivity.EXTRA_AUTOPLAY, false);
+            savedPlaybackPosition = data.getLongExtra(PreviewMediaFragment.EXTRA_START_POSITION, 0);
+            autoplay = data.getBooleanExtra(PreviewMediaFragment.EXTRA_AUTOPLAY, false);
         }
     }
 
@@ -658,7 +659,6 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     private void openFile() {
         stopPreview(true);
         containerActivity.getFileOperationsHelper().openFile(getFile());
-        finishPreview();
     }
 
     /**
@@ -672,21 +672,11 @@ public class PreviewMediaFragment extends FileFragment implements OnTouchListene
     }
 
     public void stopPreview(boolean stopAudio) {
-        OCFile file = getFile();
-        if (MimeTypeUtil.isAudio(file) && stopAudio) {
-            mediaPlayerServiceConnection.pause();
-        } else if (MimeTypeUtil.isVideo(file)) {
-            exoPlayer.stop(true);
-        }
-    }
-
-    /**
-     * Finishes the preview
-     */
-    private void finishPreview() {
-        final Activity activity = getActivity();
-        if (activity != null) {
-            activity.onBackPressed();
+        if (stopAudio && mediaPlayerServiceConnection != null) {
+            mediaPlayerServiceConnection.stop();
+        } else if (exoPlayer != null) {
+            savedPlaybackPosition = exoPlayer.getCurrentPosition();
+            exoPlayer.stop();
         }
     }
 

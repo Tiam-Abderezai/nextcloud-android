@@ -1,3 +1,9 @@
+/*
+ * Nextcloud - Android Client
+ *
+ * SPDX-FileCopyrightText: 2020 Torsten Grote <t@grobox.de>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+ */
 package com.owncloud.android.providers
 
 import android.content.Context
@@ -75,8 +81,8 @@ object DocumentsProviderUtils {
         assertTrue("File $name older than expected: $diff", diff < RECENT_MILLISECONDS)
     }
 
-    internal fun assertExistsOnServer(client: OwnCloudClient, remotePath: String, shouldExit: Boolean) {
-        val result = ExistenceCheckRemoteOperation(remotePath, !shouldExit).execute(client)
+    internal fun assertExistsOnServer(client: OwnCloudClient, remotePath: String, shouldExist: Boolean) {
+        val result = ExistenceCheckRemoteOperation(remotePath, !shouldExist).execute(client)
         assertTrue("$result", result.isSuccess)
     }
 
@@ -184,8 +190,11 @@ object DocumentsProviderUtils {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
                                 cursor.close()
                                 val newCursor = query()
-                                if (newCursor == null) cont.cancel(IOException("Re-query returned no results"))
-                                else cont.resume(newCursor)
+                                if (newCursor == null) {
+                                    cont.cancel(IOException("Re-query returned no results"))
+                                } else {
+                                    cont.resume(newCursor)
+                                }
                             }
                         }
                     )

@@ -6,18 +6,7 @@
  * Copyright (C) 2021 Andy Scherzinger
  * Copyright (C) 2021 Stefan Niedermann
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui;
@@ -38,9 +27,7 @@ import com.owncloud.android.R;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.lib.resources.shares.ShareeUser;
 import com.owncloud.android.utils.DisplayUtils;
-import com.owncloud.android.utils.theme.ThemeAvatarUtils;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.List;
 
@@ -86,9 +73,7 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
 
     public void setAvatars(@NonNull User user,
                            @NonNull List<ShareeUser> sharees,
-                           ThemeColorUtils themeColorUtils,
-                           ThemeDrawableUtils themeDrawableUtils,
-                           ThemeAvatarUtils themeAvatarUtils) {
+                           final ViewThemeUtils viewThemeUtils) {
         @NonNull Context context = getContext();
         removeAllViews();
         RelativeLayout.LayoutParams avatarLayoutParams;
@@ -114,7 +99,7 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
 
             if (avatarCount == 0 && sharees.size() > MAX_AVATAR_COUNT) {
                 avatar.setImageResource(R.drawable.ic_people);
-                themeDrawableUtils.setIconColor(avatar.getDrawable());
+                viewThemeUtils.platform.tintTextDrawable(context, avatar.getDrawable());
             } else {
                 sharee = sharees.get(avatarCount);
                 switch (sharee.getShareType()) {
@@ -122,7 +107,7 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
                     case EMAIL:
                     case ROOM:
                     case CIRCLE:
-                        themeAvatarUtils.createAvatar(sharee.getShareType(), avatar, context, themeColorUtils);
+                        viewThemeUtils.files.createAvatar(sharee.getShareType(), avatar, context);
                         break;
                     case FEDERATED:
                         showFederatedShareAvatar(context,
@@ -130,7 +115,7 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
                                                  avatarRadius,
                                                  resources,
                                                  avatar,
-                                                 themeDrawableUtils);
+                                                 viewThemeUtils);
                         break;
                     default:
                         avatar.setTag(sharee);
@@ -159,7 +144,7 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
                                           float avatarRadius,
                                           Resources resources,
                                           ImageView avatar,
-                                          ThemeDrawableUtils themeDrawableUtils) {
+                                          ViewThemeUtils viewThemeUtils) {
         // maybe federated share
         String[] split = user.split("@");
         String userId = split[0];
@@ -173,10 +158,10 @@ public class AvatarGroupLayout extends RelativeLayout implements DisplayUtils.Av
             placeholder = TextDrawable.createAvatarByUserId(userId, avatarRadius);
         } catch (Exception e) {
             Log_OC.e(TAG, "Error calculating RGB value for active account icon.", e);
-            placeholder = themeDrawableUtils.tintDrawable(ResourcesCompat.getDrawable(resources,
-                                                                                      R.drawable.account_circle_white,
-                                                                                      null),
-                                                          R.color.black);
+            placeholder = viewThemeUtils.platform.colorDrawable(ResourcesCompat.getDrawable(resources,
+                                                                                            R.drawable.account_circle_white,
+                                                                                            null),
+                                                                ContextCompat.getColor(context, R.color.black));
         }
 
         avatar.setTag(null);

@@ -1,27 +1,17 @@
-/**
- *   ownCloud Android client application
+/*
+ * Nextcloud - Android Client
  *
- *   @author masensio
- *   @author Juan Carlos González Cabrero
- *   @author David A. Velasco
- *   Copyright (C) 2016 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2021 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2017 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2016 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2016 Juan Carlos González Cabrero <malkomich@gmail.com>
+ * SPDX-FileCopyrightText: 2015 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
 package com.owncloud.android.ui.asynctasks;
 
-import android.accounts.Account;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
@@ -31,8 +21,8 @@ import android.provider.DocumentsContract;
 import android.widget.Toast;
 
 import com.nextcloud.client.account.User;
+import com.nextcloud.client.jobs.upload.FileUploadHelper;
 import com.owncloud.android.R;
-import com.owncloud.android.files.services.FileUploader;
 import com.owncloud.android.files.services.NameCollisionPolicy;
 import com.owncloud.android.lib.common.operations.RemoteOperationResult.ResultCode;
 import com.owncloud.android.lib.common.utils.Log_OC;
@@ -60,9 +50,8 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
     private WeakReference<OnCopyTmpFilesTaskListener> mListener;
 
     /**
-     * Reference to application context, used to access app resources. Holding it should not be a problem,
-     * since it needs to exist until the end of the AsyncTask although the caller Activity were finished
-     * before.
+     * Reference to application context, used to access app resources. Holding it should not be a problem, since it
+     * needs to exist until the end of the AsyncTask although the caller Activity were finished before.
      */
     private final Context mAppContext;
 
@@ -92,7 +81,7 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
      *
      * Any idea to prevent this while keeping the functionality will be welcome.
      *
-     * @return  Correct array of parameters to be passed to {@link #execute(Object[])}
+     * @return Correct array of parameters to be passed to {@link #execute(Object[])}
      */
     public static Object[] makeParamsToExecute(
         User user,
@@ -100,9 +89,9 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
         String[] remotePaths,
         int behaviour,
         ContentResolver contentResolver
-    ) {
+                                              ) {
 
-        return new Object[] {
+        return new Object[]{
             user,
             sourceUris,
             remotePaths,
@@ -114,7 +103,7 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
     public CopyAndUploadContentUrisTask(
         OnCopyTmpFilesTaskListener listener,
         Context context
-    ) {
+                                       ) {
         mListener = new WeakReference<>(listener);
         mAppContext = context.getApplicationContext();
     }
@@ -194,8 +183,7 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
                     user,
                     fullTempPath,
                     currentRemotePath,
-                    behaviour,
-                    leakedContentResolver.getType(currentUri)
+                    behaviour
                 );
                 fullTempPath = null;
             }
@@ -249,20 +237,17 @@ public class CopyAndUploadContentUrisTask extends AsyncTask<Object, Void, Result
         return result;
     }
 
-    private void requestUpload(User user, String localPath, String remotePath, int behaviour, String mimeType) {
-        FileUploader.uploadNewFile(
-                mAppContext,
-                user,
-                localPath,
-                remotePath,
-                behaviour,
-                mimeType,
-                false,      // do not create parent folder if not existent
-                UploadFileOperation.CREATED_BY_USER,
-                false,
-                false,
-                NameCollisionPolicy.ASK_USER
-        );
+    private void requestUpload(User user, String localPath, String remotePath, int behaviour) {
+        FileUploadHelper.Companion.instance().uploadNewFiles(
+            user,
+            new String[]{ localPath },
+            new String[]{ remotePath },
+            behaviour,
+            false,      // do not create parent folder if not existent
+            UploadFileOperation.CREATED_BY_USER,
+            false,
+            false,
+            NameCollisionPolicy.ASK_USER);
     }
 
     @Override

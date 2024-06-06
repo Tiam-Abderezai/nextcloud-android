@@ -1,37 +1,29 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.nextcloud.client.di;
 
 import android.app.Application;
 
+import com.nextcloud.appReview.InAppReviewModule;
 import com.nextcloud.client.appinfo.AppInfoModule;
+import com.nextcloud.client.database.DatabaseModule;
 import com.nextcloud.client.device.DeviceModule;
 import com.nextcloud.client.integrations.IntegrationsModule;
 import com.nextcloud.client.jobs.JobsModule;
+import com.nextcloud.client.jobs.download.FileDownloadHelper;
+import com.nextcloud.client.jobs.upload.FileUploadHelper;
 import com.nextcloud.client.network.NetworkModule;
 import com.nextcloud.client.onboarding.OnboardingModule;
 import com.nextcloud.client.preferences.PreferencesModule;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.media.MediaControlView;
 import com.owncloud.android.ui.ThemeableSwitchPreference;
+import com.owncloud.android.ui.whatsnew.ProgressIndicator;
 
 import javax.inject.Singleton;
 
@@ -50,7 +42,11 @@ import dagger.android.support.AndroidSupportInjectionModule;
     ViewModelModule.class,
     JobsModule.class,
     IntegrationsModule.class,
-    ThemeModule.class
+    InAppReviewModule.class,
+    ThemeModule.class,
+    DatabaseModule.class,
+    DispatcherModule.class,
+    VariantModule.class
 })
 @Singleton
 public interface AppComponent {
@@ -60,6 +56,12 @@ public interface AppComponent {
     void inject(MediaControlView mediaControlView);
 
     void inject(ThemeableSwitchPreference switchPreference);
+
+    void inject(FileUploadHelper fileUploadHelper);
+
+    void inject(FileDownloadHelper fileDownloadHelper);
+
+    void inject(ProgressIndicator progressIndicator);
 
     @Component.Builder
     interface Builder {

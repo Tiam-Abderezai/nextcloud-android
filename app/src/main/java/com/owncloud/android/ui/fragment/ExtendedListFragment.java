@@ -1,27 +1,18 @@
 /*
- * ownCloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Mario Danic
- * @author Chris Narkiewicz
- *
- * Copyright (C) 2017 Mario Danic
- * Copyright (C) 2012 Bartek Przybylski
- * Copyright (C) 2012-2016 ownCloud Inc.
- * Copyright (C) 2019 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro.brey@nextcloud.com>
+ * SPDX-FileCopyrightText: 2018-2021 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2017 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2017 Mario Danic <mario@lovelyhq.com>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2015 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2014 Luke Owncloud <owncloud@ohrt.org
+ * SPDX-FileCopyrightText: 2014 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2012 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.ui.fragment;
 
 import android.animation.LayoutTransition;
@@ -68,10 +59,7 @@ import com.owncloud.android.ui.activity.UploadFilesActivity;
 import com.owncloud.android.ui.adapter.LocalFileListAdapter;
 import com.owncloud.android.ui.adapter.OCFileListAdapter;
 import com.owncloud.android.ui.events.SearchEvent;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
-import com.owncloud.android.utils.theme.ThemeDrawableUtils;
-import com.owncloud.android.utils.theme.ThemeLayoutUtils;
-import com.owncloud.android.utils.theme.ThemeToolbarUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.greenrobot.eventbus.EventBus;
 
@@ -116,10 +104,8 @@ public class ExtendedListFragment extends Fragment implements
 
     @Inject AppPreferences preferences;
     @Inject UserAccountManager accountManager;
-    @Inject ThemeColorUtils themeColorUtils;
-    @Inject ThemeLayoutUtils themeLayoutUtils;
-    @Inject ThemeToolbarUtils themeToolbarUtils;
-    @Inject ThemeDrawableUtils themeDrawableUtils;
+    @Inject ViewThemeUtils viewThemeUtils;
+
     private ScaleGestureDetector mScaleGestureDetector;
     protected SwipeRefreshLayout mRefreshListLayout;
     protected MaterialButton mSortButton;
@@ -146,6 +132,10 @@ public class ExtendedListFragment extends Fragment implements
     private float mScale = AppPreferencesImpl.DEFAULT_GRID_COLUMN;
 
     private ListFragmentBinding binding;
+
+    public ListFragmentBinding getBinding() {
+        return binding;
+    }
 
     protected void setRecyclerViewAdapter(RecyclerView.Adapter recyclerViewAdapter) {
         mRecyclerView.setAdapter(recyclerViewAdapter);
@@ -183,13 +173,10 @@ public class ExtendedListFragment extends Fragment implements
     public void onCreateOptionsMenu(Menu menu, @NonNull MenuInflater inflater) {
         final MenuItem item = menu.findItem(R.id.action_search);
         searchView = (SearchView) MenuItemCompat.getActionView(item);
+        viewThemeUtils.androidx.themeToolbarSearchView(searchView);
         closeButton = searchView.findViewById(androidx.appcompat.R.id.search_close_btn);
         searchView.setOnQueryTextListener(this);
         searchView.setOnCloseListener(this);
-        themeToolbarUtils.themeSearchView(searchView, requireContext());
-
-        SearchView.SearchAutoComplete theTextArea = searchView.findViewById(R.id.search_src_text);
-        theTextArea.setHighlightColor(themeColorUtils.primaryAccentColor(getContext()));
 
         final Handler handler = new Handler();
 
@@ -254,11 +241,16 @@ public class ExtendedListFragment extends Fragment implements
 
     @Override
     public boolean onQueryTextSubmit(String query) {
-        performSearch(query, false);
-        return true;
+        RecyclerView.Adapter adapter = getRecyclerView().getAdapter();
+        if (adapter instanceof OCFileListAdapter) {
+            ArrayList<String> listOfHiddenFiles = ((OCFileListAdapter) adapter).listOfHiddenFiles;
+            performSearch(query, listOfHiddenFiles, false);
+            return true;
+        }
+        return false;
     }
 
-    public void performSearch(final String query, boolean isBackPressed) {
+    public void performSearch(final String query, final ArrayList<String> listOfHiddenFiles, boolean isBackPressed) {
         handler.removeCallbacksAndMessages(null);
         RecyclerView.Adapter adapter = getRecyclerView().getAdapter();
         Activity activity = getActivity();
@@ -277,7 +269,7 @@ public class ExtendedListFragment extends Fragment implements
                                 .getVersion()
                                 .isNewerOrEqual(OwnCloudVersion.nextcloud_20)
                             ) {
-                                ((FileDisplayActivity) activity).performUnifiedSearch(query);
+                                ((FileDisplayActivity) activity).performUnifiedSearch(query, listOfHiddenFiles);
                             } else {
                                 EventBus.getDefault().post(
                                     new SearchEvent(query, SearchRemoteOperation.SearchType.FILE_SEARCH)
@@ -305,9 +297,13 @@ public class ExtendedListFragment extends Fragment implements
 
     @Override
     public boolean onClose() {
-        performSearch("", true);
-
-        return false;
+        RecyclerView.Adapter adapter = getRecyclerView().getAdapter();
+        if (adapter instanceof OCFileListAdapter) {
+            ArrayList<String> listOfHiddenFiles = ((OCFileListAdapter) adapter).listOfHiddenFiles;
+            performSearch("", listOfHiddenFiles,true);
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -347,11 +343,17 @@ public class ExtendedListFragment extends Fragment implements
 
         // Pull-down to refresh layout
         mRefreshListLayout = binding.swipeContainingList;
-        themeLayoutUtils.colorSwipeRefreshLayout(getContext(), mRefreshListLayout);
+        viewThemeUtils.androidx.themeSwipeRefreshLayout(mRefreshListLayout);
         mRefreshListLayout.setOnRefreshListener(this);
 
         mSortButton = getActivity().findViewById(R.id.sort_button);
+        if (mSortButton != null) {
+            viewThemeUtils.material.colorMaterialTextButton(mSortButton);
+        }
         mSwitchGridViewButton = getActivity().findViewById(R.id.switch_grid_view_button);
+        if (mSwitchGridViewButton != null) {
+            viewThemeUtils.material.colorMaterialTextButton(mSwitchGridViewButton);
+        }
 
         return v;
     }
@@ -375,7 +377,7 @@ public class ExtendedListFragment extends Fragment implements
         }
     }
 
-    private void setGridViewColumns(float scaleFactor) {
+    protected void setGridViewColumns(float scaleFactor) {
         if (mRecyclerView.getLayoutManager() instanceof GridLayoutManager) {
             GridLayoutManager gridLayoutManager = (GridLayoutManager) mRecyclerView.getLayoutManager();
             if (mScale == -1f) {
@@ -469,7 +471,7 @@ public class ExtendedListFragment extends Fragment implements
     private void scrollToPosition(int position) {
         LinearLayoutManager linearLayoutManager = (LinearLayoutManager) mRecyclerView.getLayoutManager();
 
-        if (mRecyclerView != null) {
+        if (linearLayoutManager != null) {
             int visibleItemCount = linearLayoutManager.findLastCompletelyVisibleItemPosition() -
                 linearLayoutManager.findFirstCompletelyVisibleItemPosition();
             linearLayoutManager.scrollToPositionWithOffset(position, (visibleItemCount / 2) * mHeightCell);
@@ -587,8 +589,7 @@ public class ExtendedListFragment extends Fragment implements
                     if (tintIcon) {
                         if (getContext() != null) {
                             mEmptyListIcon.setImageDrawable(
-                                themeDrawableUtils.tintDrawable(icon,
-                                                                themeColorUtils.primaryColor(getContext(), true)));
+                                viewThemeUtils.platform.tintPrimaryDrawable(getContext(), icon));
                         }
                     } else {
                         mEmptyListIcon.setImageResource(icon);
@@ -666,7 +667,11 @@ public class ExtendedListFragment extends Fragment implements
     @Override
     public void onRefresh(boolean ignoreETag) {
         if (mOnRefreshListener != null) {
-            mOnRefreshListener.onRefresh();
+            if (mOnRefreshListener instanceof FileDisplayActivity) {
+                ((FileDisplayActivity) mOnRefreshListener).onRefresh(ignoreETag);
+            } else {
+                mOnRefreshListener.onRefresh();
+            }
         }
     }
 

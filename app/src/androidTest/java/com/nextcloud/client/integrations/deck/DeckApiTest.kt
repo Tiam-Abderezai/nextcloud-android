@@ -1,21 +1,8 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Chris Narkiewicz
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.nextcloud.client.integrations.deck
 
@@ -33,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Suite
+import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
@@ -84,7 +72,7 @@ class DeckApiTest {
 
         @Before
         fun setUp() {
-            whenever(packageManager.resolveActivity(any(), any())).thenAnswer {
+            whenever(packageManager.resolveActivity(any(), anyInt())).thenAnswer {
                 val intent = it.getArgument<Intent>(0)
                 return@thenAnswer if (intent.component?.packageName == installedDeckPackage) {
                     ResolveInfo()
@@ -124,7 +112,7 @@ class DeckApiTest {
             // THEN
             //      deck application is not being resolved
             //      open action is not created
-            verify(packageManager, never()).resolveActivity(anyOrNull(), anyOrNull())
+            verify(packageManager, never()).resolveActivity(anyOrNull(), anyOrNull<Int>())
             assertFalse(openDeckActionIntent.isPresent)
         }
     }
@@ -133,7 +121,7 @@ class DeckApiTest {
 
         @Before
         fun setUp() {
-            whenever(packageManager.resolveActivity(any(), any())).thenReturn(null)
+            whenever(packageManager.resolveActivity(any(), anyInt())).thenReturn(null)
         }
 
         @Test
@@ -151,7 +139,8 @@ class DeckApiTest {
             // THEN
             //      deck application is being resolved using all known packages
             //      open action is not created
-            verify(packageManager, times(DeckApiImpl.DECK_APP_PACKAGES.size)).resolveActivity(anyOrNull(), anyOrNull())
+            verify(packageManager, times(DeckApiImpl.DECK_APP_PACKAGES.size))
+                .resolveActivity(anyOrNull(), anyOrNull<Int>())
             assertFalse(openDeckActionIntent.isPresent)
         }
 
@@ -170,7 +159,7 @@ class DeckApiTest {
             // THEN
             //      deck application is not being resolved
             //      open action is not created
-            verify(packageManager, never()).resolveActivity(anyOrNull(), anyOrNull())
+            verify(packageManager, never()).resolveActivity(anyOrNull(), anyOrNull<Int>())
             assertFalse(openDeckActionIntent.isPresent)
         }
     }

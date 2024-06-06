@@ -1,27 +1,11 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Mario Danic
- * @author Chris Narkiewicz
- * @author Tobias Kaminsky
- * Copyright (C) 2017-2018 Mario Danic
- * Copyright (C) 2019 Chris Narkiewicz
- * Copyright (C) 2019 Tobias Kaminsky
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2019 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2019 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2017-2018 Mario Danic <mario@lovelyhq.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.utils;
 
 import android.accounts.Account;
@@ -38,6 +22,7 @@ import com.nextcloud.client.preferences.AppPreferencesImpl;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
 import com.owncloud.android.datamodel.ArbitraryDataProvider;
+import com.owncloud.android.datamodel.ArbitraryDataProviderImpl;
 import com.owncloud.android.datamodel.PushConfigurationState;
 import com.owncloud.android.datamodel.SignatureVerification;
 import com.owncloud.android.lib.common.OwnCloudAccount;
@@ -93,20 +78,11 @@ public final class PushUtils {
         try {
             messageDigest = MessageDigest.getInstance("SHA-512");
             messageDigest.update(pushToken.getBytes());
-            return bytesToHex(messageDigest.digest());
+            return EncryptionUtils.bytesToHex(messageDigest.digest());
         } catch (NoSuchAlgorithmException e) {
             Log_OC.d(TAG, "SHA-512 algorithm not supported");
         }
         return "";
-    }
-
-    public static String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte individualByte : bytes) {
-            result.append(Integer.toString((individualByte & 0xff) + 0x100, 16)
-                    .substring(1));
-        }
-        return result.toString();
     }
 
     private static int generateRsa2048KeyPair() {
@@ -151,7 +127,7 @@ public final class PushUtils {
     private static void deleteRegistrationForAccount(Account account) {
         Context context = MainApp.getAppContext();
         OwnCloudAccount ocAccount;
-        arbitraryDataProvider = new ArbitraryDataProvider(MainApp.getAppContext().getContentResolver());
+        arbitraryDataProvider = new ArbitraryDataProviderImpl(MainApp.getAppContext());
 
         try {
             ocAccount = new OwnCloudAccount(account, context);
@@ -193,7 +169,7 @@ public final class PushUtils {
     }
 
     public static void pushRegistrationToServer(final UserAccountManager accountManager, final String token) {
-        arbitraryDataProvider = new ArbitraryDataProvider(MainApp.getAppContext().getContentResolver());
+        arbitraryDataProvider = new ArbitraryDataProviderImpl(MainApp.getAppContext());
 
         if (!TextUtils.isEmpty(MainApp.getAppContext().getResources().getString(R.string.push_server_url)) &&
                 !TextUtils.isEmpty(token)) {
@@ -228,14 +204,14 @@ public final class PushUtils {
                             OwnCloudClient client = OwnCloudClientManagerFactory.getDefaultSingleton().
                                     getClientFor(ocAccount, context);
 
-                            RemoteOperationResult remoteOperationResult =
+                            RemoteOperationResult<PushResponse> remoteOperationResult =
                                 new RegisterAccountDeviceForNotificationsOperation(pushTokenHash,
                                                                                    publicKey,
                                                                                    context.getResources().getString(R.string.push_server_url))
                                     .execute(client);
 
                             if (remoteOperationResult.isSuccess()) {
-                                PushResponse pushResponse = remoteOperationResult.getPushResponseData();
+                                PushResponse pushResponse = remoteOperationResult.getResultData();
 
                                 RemoteOperationResult resultProxy = new RegisterAccountDeviceForProxyOperation(
                                     context.getResources().getString(R.string.push_server_url),
@@ -418,7 +394,7 @@ public final class PushUtils {
 
         Account[] accounts = accountManager.getAccounts();
 
-        ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProvider(context.getContentResolver());
+        ArbitraryDataProvider arbitraryDataProvider = new ArbitraryDataProviderImpl(context);
         String arbitraryValue;
         Gson gson = new Gson();
         PushConfigurationState pushArbitraryData;

@@ -1,30 +1,14 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2020 Tobias Kaminsky
- * Copyright (C) 2020 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.adapter
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.core.content.res.ResourcesCompat
@@ -42,8 +26,7 @@ import com.owncloud.android.ui.interfaces.UnifiedSearchListInterface
 import com.owncloud.android.utils.BitmapUtils
 import com.owncloud.android.utils.MimeTypeUtil
 import com.owncloud.android.utils.glide.CustomGlideStreamLoader
-import com.owncloud.android.utils.theme.ThemeColorUtils
-import com.owncloud.android.utils.theme.ThemeDrawableUtils
+import com.owncloud.android.utils.theme.ViewThemeUtils
 
 @Suppress("LongParameterList")
 class UnifiedSearchItemViewHolder(
@@ -52,11 +35,15 @@ class UnifiedSearchItemViewHolder(
     val clientFactory: ClientFactory,
     private val storageManager: FileDataStorageManager,
     private val listInterface: UnifiedSearchListInterface,
+    private val filesAction: FilesAction,
     val context: Context,
-    private val themeColorUtils: ThemeColorUtils,
-    private val themeDrawableUtils: ThemeDrawableUtils
+    private val viewThemeUtils: ViewThemeUtils
 ) :
     SectionedViewHolder(binding.root) {
+
+    interface FilesAction {
+        fun showFilesAction(searchResultEntry: SearchResultEntry)
+    }
 
     fun bind(entry: SearchResultEntry) {
         binding.title.text = entry.title
@@ -81,6 +68,13 @@ class UnifiedSearchItemViewHolder(
             .listener(RoundIfNeededListener(entry))
             .into(binding.thumbnail)
 
+        if (entry.isFile) {
+            binding.more.visibility = View.VISIBLE
+            binding.more.setOnClickListener { filesAction.showFilesAction(entry) }
+        } else {
+            binding.more.visibility = View.GONE
+        }
+
         binding.unifiedSearchItemLayout.setOnClickListener { listInterface.onSearchResultClicked(entry) }
     }
 
@@ -101,12 +95,10 @@ class UnifiedSearchItemViewHolder(
                 startsWith("icon-deck") ->
                     ResourcesCompat.getDrawable(context.resources, R.drawable.ic_deck, null)
                 else ->
-                    MimeTypeUtil.getFileTypeIcon(mimetype, entry.title, context, themeColorUtils, themeDrawableUtils)
+                    MimeTypeUtil.getFileTypeIcon(mimetype, entry.title, context, viewThemeUtils)
             }
         }
-        val color = themeColorUtils.primaryColor(context)
-        drawable!!.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_ATOP)
-        return drawable
+        return viewThemeUtils.platform.tintPrimaryDrawable(context, drawable)!!
     }
 
     private inner class RoundIfNeededListener(private val entry: SearchResultEntry) :

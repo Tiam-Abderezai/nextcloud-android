@@ -3,21 +3,10 @@
  *
  * @author David Luhmer
  * @author Andy Scherzinger
- * Copyright (C) 2018 David Luhmer
+ * Copyright (C) 2018 David Luhmer <david-dev@live.de>
  * Copyright (C) 2018 Andy Scherzinger
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 
 package com.owncloud.android.ui.activity;
@@ -38,16 +27,23 @@ import android.text.SpannableStringBuilder;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.nextcloud.android.sso.Constants;
+import com.nextcloud.utils.extensions.IntentExtensionsKt;
 import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
-import com.owncloud.android.databinding.ActivitySsoGrantPermissionBinding;
+import com.owncloud.android.databinding.DialogSsoGrantPermissionBinding;
 import com.owncloud.android.lib.common.OwnCloudAccount;
 import com.owncloud.android.lib.common.accounts.AccountUtils;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.utils.EncryptionUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import java.util.UUID;
+
+import javax.inject.Inject;
+
+import androidx.appcompat.app.AlertDialog;
 
 import static com.nextcloud.android.sso.Constants.DELIMITER;
 import static com.nextcloud.android.sso.Constants.EXCEPTION_ACCOUNT_ACCESS_DECLINED;
@@ -68,23 +64,54 @@ public class SsoGrantPermissionActivity extends BaseActivity {
     private String packageName;
     private Account account;
 
+    @Inject ViewThemeUtils.Factory themeUtilsFactory;
+    private ViewThemeUtils viewThemeUtils;
+
+    private AlertDialog dialog;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        ActivitySsoGrantPermissionBinding binding = ActivitySsoGrantPermissionBinding.inflate(getLayoutInflater());
-        setContentView(binding.getRoot());
+        viewThemeUtils = themeUtilsFactory.withDefaultSchemes();
+
+        DialogSsoGrantPermissionBinding binding = DialogSsoGrantPermissionBinding.inflate(getLayoutInflater());
 
         ComponentName callingActivity = getCallingActivity();
 
         if (callingActivity != null) {
             packageName = callingActivity.getPackageName();
-            String appName = getAppNameForPackage(packageName);
-            account = getIntent().getParcelableExtra(NEXTCLOUD_FILES_ACCOUNT);
-            binding.permissionText.setText(makeSpecialPartsBold(
-                getString(R.string.single_sign_on_request_token, appName, account.name),
-                appName,
-                account.name));
+            final String appName = getAppNameForPackage(packageName);
+            account = IntentExtensionsKt.getParcelableArgument(getIntent(), NEXTCLOUD_FILES_ACCOUNT, Account.class);
+
+            if (account != null) {
+                final SpannableStringBuilder dialogText = makeSpecialPartsBold(
+                    getString(R.string.single_sign_on_request_token, appName, account.name),
+                    appName,
+                    account.name);
+                binding.permissionText.setText(dialogText);
+            }
+
+            try {
+                if (packageName != null) {
+                    Drawable appIcon = getPackageManager().getApplicationIcon(packageName);
+                    binding.appIcon.setImageDrawable(appIcon);
+                }
+            } catch (PackageManager.NameNotFoundException e) {
+                Log_OC.e(TAG, "Error retrieving app icon", e);
+            }
+
+            final MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                .setView(binding.getRoot())
+                .setCancelable(false)
+                .setPositiveButton(R.string.permission_allow, (dialog, which) -> grantPermission())
+                .setNegativeButton(R.string.permission_deny, (dialog, which) -> exitFailed());
+
+            viewThemeUtils.dialog.colorMaterialAlertDialogBackground(this, builder);
+
+            dialog = builder.create();
+            dialog.show();
+
             Log_OC.v(TAG, "TOKEN-REQUEST: Calling Package: " + packageName);
             Log_OC.v(TAG, "TOKEN-REQUEST: App Name: " + appName);
         } else {
@@ -92,18 +119,13 @@ public class SsoGrantPermissionActivity extends BaseActivity {
             Log_OC.e(TAG, "Calling Package is null");
             setResultAndExit("Request was not executed properly. Use startActivityForResult()");
         }
+    }
 
-        try {
-            if (packageName != null) {
-                Drawable appIcon = getPackageManager().getApplicationIcon(packageName);
-                binding.appIcon.setImageDrawable(appIcon);
-            }
-        } catch (PackageManager.NameNotFoundException e) {
-            Log_OC.e(TAG, "Error retrieving app icon", e);
-        }
-
-        binding.btnDecline.setOnClickListener(v -> exitFailed());
-        binding.btnGrant.setOnClickListener(v -> grantPermission());
+    @Override
+    protected void onStart() {
+        super.onStart();
+        viewThemeUtils.platform.colorTextButtons(dialog.getButton(AlertDialog.BUTTON_POSITIVE),
+                                                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE));
     }
 
     private SpannableStringBuilder makeSpecialPartsBold(String text, String... toBeStyledText) {

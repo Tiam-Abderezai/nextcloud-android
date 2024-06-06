@@ -1,10 +1,16 @@
+/*
+ * Nextcloud - Android Client
+ *
+ * SPDX-FileCopyrightText: 2021 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2021# Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
+ */
 package com.nextcloud.client.utils
 
 import com.nextcloud.client.core.Clock
 import io.mockk.MockKAnnotations
 import io.mockk.Runs
 import io.mockk.every
-
 import io.mockk.impl.annotations.MockK
 import io.mockk.just
 import io.mockk.verify

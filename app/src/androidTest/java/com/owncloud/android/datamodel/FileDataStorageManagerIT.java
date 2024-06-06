@@ -1,25 +1,10 @@
 /*
+ * Nextcloud - Android Client
  *
- * Nextcloud Android client application
- *
- * @author Tobias Kaminsky
- * Copyright (C) 2020 Tobias Kaminsky
- * Copyright (C) 2020 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.datamodel;
 
 import android.content.ContentValues;
@@ -101,23 +86,23 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
 
         assertTrue(new CreateFolderRemoteOperation("/1/2/", true).execute(client).isSuccess());
 
-        assertTrue(new UploadFileRemoteOperation(getDummyFile("/chunkedFile.txt").getAbsolutePath(),
+        assertTrue(new UploadFileRemoteOperation(getDummyFile("chunkedFile.txt").getAbsolutePath(),
                                                  "/1/1/chunkedFile.txt",
                                                  "text/plain",
-                                                 String.valueOf(System.currentTimeMillis() / 1000))
+                                                 System.currentTimeMillis() / 1000)
                        .execute(client).isSuccess());
 
-        assertTrue(new UploadFileRemoteOperation(getDummyFile("/chunkedFile.txt").getAbsolutePath(),
+        assertTrue(new UploadFileRemoteOperation(getDummyFile("chunkedFile.txt").getAbsolutePath(),
                                                  "/1/1/chunkedFile2.txt",
                                                  "text/plain",
-                                                 String.valueOf(System.currentTimeMillis() / 1000))
+                                                 System.currentTimeMillis() / 1000)
                        .execute(client).isSuccess());
 
         File imageFile = getFile("imageFile.png");
         assertTrue(new UploadFileRemoteOperation(imageFile.getAbsolutePath(),
                                                  "/1/1/imageFile.png",
                                                  "image/png",
-                                                 String.valueOf(System.currentTimeMillis() / 1000))
+                                                 System.currentTimeMillis() / 1000)
                        .execute(client).isSuccess());
 
         // sync
@@ -166,7 +151,7 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
         assertTrue(new UploadFileRemoteOperation(imageFile.getAbsolutePath(),
                                                  remotePath,
                                                  "image/png",
-                                                 String.valueOf(System.currentTimeMillis() / 1000))
+                                                 System.currentTimeMillis() / 1000)
                        .execute(client).isSuccess());
 
         assertNull(sut.getFileByDecryptedRemotePath(remotePath));
@@ -240,7 +225,7 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
         assertTrue(new UploadFileRemoteOperation(imageFile.getAbsolutePath(),
                                                  imagePath,
                                                  "image/png",
-                                                 String.valueOf((System.currentTimeMillis() - 10000) / 1000))
+                                                 (System.currentTimeMillis() - 10000) / 1000)
                        .execute(client).isSuccess());
 
         // Check that file does not yet exist in local database
@@ -251,7 +236,7 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
         assertTrue(new UploadFileRemoteOperation(videoFile.getAbsolutePath(),
                                                  videoPath,
                                                  "video/mpeg",
-                                                 String.valueOf((System.currentTimeMillis() + 10000) / 1000))
+                                                 (System.currentTimeMillis() + 10000) / 1000)
                        .execute(client).isSuccess());
 
         // Check that file does not yet exist in local database
@@ -344,7 +329,7 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
                                               targetContext).execute(client).isSuccess());
 
         OCFile newFile = new OCFile("/1/1/1.txt");
-        newFile.setRemoteId("123");
+        newFile.setRemoteId("12345678");
 
         sut.saveNewFile(newFile);
     }
@@ -369,4 +354,5 @@ abstract public class FileDataStorageManagerIT extends AbstractOnServerIT {
 
         assertEquals(capability.getUserStatus(), newCapability.getUserStatus());
     }
+
 }

@@ -1,33 +1,16 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Mario Danic
- * @author Andy Scherzinger
- * @author Chris Narkiewicz  <hello@ezaquarii.com>
- * @author Chawki Chouib  <chouibc@gmail.com>
- * Copyright (C) 2017 Mario Danic
- * Copyright (C) 2017 Andy Scherzinger
- * Copyright (C) 2017 Nextcloud GmbH.
- * Copyright (C) 2020 Chris Narkiewicz <hello@ezaquarii.com>
- * Copyright (C) 2020 Chawki Chouib  <chouibc@gmail.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2017-2020 Andy Scherzinger <info@andy-scherzinger>
+ * SPDX-FileCopyrightText: 2020 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2020 Chawki Chouib <chouibc@gmail.com>
+ * SPDX-FileCopyrightText: 2018 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2017 Mario Danic <mario@lovelyhq.com>
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
-
 package com.owncloud.android.ui.activity;
 
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.os.Bundle;
@@ -48,6 +31,7 @@ import com.nextcloud.client.account.User;
 import com.nextcloud.client.di.Injectable;
 import com.nextcloud.client.preferences.AppPreferences;
 import com.nextcloud.common.NextcloudClient;
+import com.nextcloud.utils.extensions.BundleExtensionsKt;
 import com.owncloud.android.R;
 import com.owncloud.android.databinding.UserInfoDetailsTableItemBinding;
 import com.owncloud.android.databinding.UserInfoLayoutBinding;
@@ -57,10 +41,11 @@ import com.owncloud.android.lib.common.accounts.AccountUtils;
 import com.owncloud.android.lib.common.operations.RemoteOperationResult;
 import com.owncloud.android.lib.common.utils.Log_OC;
 import com.owncloud.android.lib.resources.users.GetUserInfoRemoteOperation;
-import com.owncloud.android.ui.dialog.AccountRemovalConfirmationDialog;
+import com.owncloud.android.ui.dialog.AccountRemovalDialog;
 import com.owncloud.android.ui.events.TokenPushEvent;
 import com.owncloud.android.utils.DisplayUtils;
 import com.owncloud.android.utils.PushUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -70,13 +55,11 @@ import java.util.List;
 
 import javax.inject.Inject;
 
-import androidx.annotation.ColorInt;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 import androidx.appcompat.app.ActionBar;
 import androidx.core.content.res.ResourcesCompat;
-import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.lifecycle.Lifecycle;
 import androidx.recyclerview.widget.RecyclerView;
@@ -108,16 +91,16 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
             return;
         }
 
-        user = bundle.getParcelable(KEY_ACCOUNT);
+        user = BundleExtensionsKt.getParcelableArgument(bundle, KEY_ACCOUNT, User.class);
         if(user == null) {
             finish();
             return;
         }
 
         if (savedInstanceState != null && savedInstanceState.containsKey(KEY_USER_DATA)) {
-            userInfo = savedInstanceState.getParcelable(KEY_USER_DATA);
+            userInfo = BundleExtensionsKt.getParcelableArgument(savedInstanceState, KEY_USER_DATA, UserInfo.class);
         } else if (bundle.containsKey(KEY_ACCOUNT)) {
-            userInfo = bundle.getParcelable(KEY_USER_DATA);
+            userInfo =  BundleExtensionsKt.getParcelableArgument(bundle, KEY_USER_DATA, UserInfo.class);
         }
 
         mCurrentAccountAvatarRadiusDimension = getResources().getDimension(R.dimen.user_icon_radius);
@@ -134,11 +117,10 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
         if (actionBar != null) {
             actionBar.setDisplayHomeAsUpEnabled(true);
             actionBar.setDisplayShowHomeEnabled(true);
-            themeToolbarUtils.tintBackButton(actionBar, this);
+            viewThemeUtils.files.themeActionBar(this, actionBar);
         }
 
-        binding.userinfoList.setAdapter(
-            new UserInfoAdapter(null, themeColorUtils.primaryColor(getAccount(), true, this)));
+        binding.userinfoList.setAdapter(new UserInfoAdapter(null, viewThemeUtils));
 
         if (userInfo != null) {
             populateUserInfoUi(userInfo);
@@ -176,7 +158,7 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
         } else if (itemId == R.id.action_open_account) {
             accountClicked(user.hashCode());
         } else if (itemId == R.id.action_delete_account) {
-            openAccountRemovalConfirmationDialog(user, getSupportFragmentManager());
+            openAccountRemovalDialog(user, getSupportFragmentManager());
         } else {
             retval = super.onOptionsItemSelected(item);
         }
@@ -207,21 +189,23 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
             if (backgroundImageView != null) {
 
                 String background = getStorageManager().getCapability(user.getAccountName()).getServerBackground();
-                int primaryColor = themeColorUtils.primaryColor(getAccount(), false, this);
 
                 if (URLUtil.isValidUrl(background)) {
                     // background image
                     SimpleTarget target = new SimpleTarget<Drawable>() {
                         @Override
                         public void onResourceReady(Drawable resource, GlideAnimation glideAnimation) {
-                            Drawable[] drawables = {new ColorDrawable(primaryColor), resource};
+                            Drawable[] drawables = {
+                                viewThemeUtils.platform.getPrimaryColorDrawable(backgroundImageView.getContext()),
+                                resource};
                             LayerDrawable layerDrawable = new LayerDrawable(drawables);
                             backgroundImageView.setImageDrawable(layerDrawable);
                         }
 
                         @Override
                         public void onLoadFailed(Exception e, Drawable errorDrawable) {
-                            Drawable[] drawables = {new ColorDrawable(primaryColor),
+                            Drawable[] drawables = {
+                                viewThemeUtils.platform.getPrimaryColorDrawable(backgroundImageView.getContext()),
                                 ResourcesCompat.getDrawable(getResources(),
                                                             R.drawable.background,
                                                             null)};
@@ -239,7 +223,8 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
                             .into(target);
                 } else {
                     // plain color
-                    backgroundImageView.setImageDrawable(new ColorDrawable(primaryColor));
+                    backgroundImageView.setImageDrawable(
+                        viewThemeUtils.platform.getPrimaryColorDrawable(backgroundImageView.getContext()));
                 }
             }
         }
@@ -254,8 +239,6 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
                                getResources(),
                                binding.userinfoIcon,
                                this);
-
-        int tint = themeColorUtils.primaryColor(user.toPlatformAccount(), true, this);
 
         if (!TextUtils.isEmpty(userInfo.getDisplayName())) {
             binding.userinfoFullName.setText(userInfo.getDisplayName());
@@ -275,7 +258,7 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
             binding.emptyList.emptyListView.setVisibility(View.GONE);
 
             if (binding.userinfoList.getAdapter() instanceof UserInfoAdapter) {
-                binding.userinfoList.setAdapter(new UserInfoAdapter(createUserInfoDetails(userInfo), tint));
+                binding.userinfoList.setAdapter(new UserInfoAdapter(createUserInfoDetails(userInfo), viewThemeUtils));
             }
 
             binding.loadingContent.setVisibility(View.GONE);
@@ -304,8 +287,8 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
         }
     }
 
-    public static void openAccountRemovalConfirmationDialog(User user, FragmentManager fragmentManager) {
-        AccountRemovalConfirmationDialog dialog = AccountRemovalConfirmationDialog.newInstance(user);
+    public static void openAccountRemovalDialog(User user, FragmentManager fragmentManager) {
+        AccountRemovalDialog dialog = AccountRemovalDialog.newInstance(user);
         dialog.show(fragmentManager, "dialog");
     }
 
@@ -373,7 +356,7 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
 
     protected static class UserInfoAdapter extends RecyclerView.Adapter<UserInfoAdapter.ViewHolder> {
         protected List<UserInfoDetailsItem> mDisplayList;
-        @ColorInt protected int mTintColor;
+        protected ViewThemeUtils viewThemeUtils;
 
         public static class ViewHolder extends RecyclerView.ViewHolder {
             protected UserInfoDetailsTableItemBinding binding;
@@ -384,9 +367,9 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
             }
         }
 
-        public UserInfoAdapter(List<UserInfoDetailsItem> displayList, @ColorInt int tintColor) {
+        public UserInfoAdapter(List<UserInfoDetailsItem> displayList, ViewThemeUtils viewThemeUtils) {
             mDisplayList = displayList == null ? new LinkedList<>() : displayList;
-            mTintColor = tintColor;
+            this.viewThemeUtils = viewThemeUtils;
         }
 
         public void setData(List<UserInfoDetailsItem> displayList) {
@@ -411,7 +394,7 @@ public class UserInfoActivity extends DrawerActivity implements Injectable {
             holder.binding.icon.setImageResource(item.icon);
             holder.binding.text.setText(item.text);
             holder.binding.icon.setContentDescription(item.iconContentDescription);
-            DrawableCompat.setTint(holder.binding.icon.getDrawable(), mTintColor);
+            viewThemeUtils.platform.colorImageView(holder.binding.icon);
         }
 
         @Override

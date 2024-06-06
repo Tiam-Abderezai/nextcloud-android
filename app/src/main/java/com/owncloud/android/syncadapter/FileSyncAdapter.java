@@ -1,25 +1,16 @@
-/**
- *   ownCloud Android client application
+/*
+ * Nextcloud - Android Client
  *
- *   @author Bartek Przybylski
- *   @author David A. Velasco
- *   Copyright (C) 2011  Bartek Przybylski
- *   Copyright (C) 2015 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2021 Chris Narkiewicz <hello@ezaquarii.com>
+ * SPDX-FileCopyrightText: 2018 Andy Scherzinger <info@andy-scherzinger.de>
+ * SPDX-FileCopyrightText: 2015 ownCloud Inc.
+ * SPDX-FileCopyrightText: 2015 María Asensio Valverde <masensio@solidgear.es>
+ * SPDX-FileCopyrightText: 2013-2015 David A. Velasco <dvelasco@solidgear.es>
+ * SPDX-FileCopyrightText: 2011-2012 Bartosz Przybylski <bart.p.pl@gmail.com>
+ * SPDX-FileCopyrightText: 2011 Sven Aßmann <sven.assmann@lubico.biz>
+ * SPDX-License-Identifier: GPL-2.0-only AND (AGPL-3.0-or-later OR GPL-2.0-only)
  */
-
 package com.owncloud.android.syncadapter;
 
 import android.accounts.Account;
@@ -48,7 +39,7 @@ import com.owncloud.android.operations.UpdateOCVersionOperation;
 import com.owncloud.android.ui.activity.ErrorsWhileCopyingHandlerActivity;
 import com.owncloud.android.ui.notifications.NotificationUtils;
 import com.owncloud.android.utils.DataHolderUtil;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import org.apache.jackrabbit.webdav.DavException;
 
@@ -63,9 +54,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 /**
- * Implementation of {@link AbstractThreadedSyncAdapter} responsible for synchronizing
- * ownCloud files.
- *
+ * Implementation of {@link AbstractThreadedSyncAdapter} responsible for synchronizing Nextcloud files.
  * Performs a full synchronization of the account received in {@link #onPerformSync(Account, Bundle,
  * String, ContentProviderClient, SyncResult)}.
  */
@@ -76,7 +65,6 @@ public class FileSyncAdapter extends AbstractOwnCloudSyncAdapter {
     /** Maximum number of failed folder synchronizations that are supported before finishing
      * the synchronization operation */
     private static final int MAX_FAILED_RESULTS = 3;
-
 
     public static final String EVENT_FULL_SYNC_START = FileSyncAdapter.class.getName() +
             ".EVENT_FULL_SYNC_START";
@@ -122,7 +110,7 @@ public class FileSyncAdapter extends AbstractOwnCloudSyncAdapter {
      */
     private SyncResult mSyncResult;
 
-    private final ThemeColorUtils themeColorUtils;
+    private final ViewThemeUtils viewThemeUtils;
 
     /**
      * Creates a {@link FileSyncAdapter}
@@ -132,9 +120,9 @@ public class FileSyncAdapter extends AbstractOwnCloudSyncAdapter {
     public FileSyncAdapter(Context context,
                            boolean autoInitialize,
                            UserAccountManager userAccountManager,
-                           ThemeColorUtils themeColorUtils) {
+                           final ViewThemeUtils viewThemeUtils) {
         super(context, autoInitialize, userAccountManager);
-        this.themeColorUtils = themeColorUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
     /**
@@ -146,9 +134,9 @@ public class FileSyncAdapter extends AbstractOwnCloudSyncAdapter {
                            boolean autoInitialize,
                            boolean allowParallelSyncs,
                            UserAccountManager userAccountManager,
-                           ThemeColorUtils themeColorUtils) {
+                           final ViewThemeUtils viewThemeUtils) {
         super(context, autoInitialize, allowParallelSyncs, userAccountManager);
-        this.themeColorUtils = themeColorUtils;
+        this.viewThemeUtils = viewThemeUtils;
     }
 
 
@@ -524,7 +512,7 @@ public class FileSyncAdapter extends AbstractOwnCloudSyncAdapter {
     private NotificationCompat.Builder createNotificationBuilder() {
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(getContext());
         notificationBuilder.setSmallIcon(R.drawable.notification_icon).setAutoCancel(true);
-        notificationBuilder.setColor(themeColorUtils.primaryColor(getContext(), true));
+        viewThemeUtils.androidx.themeNotificationCompatBuilder(getContext(), notificationBuilder);
         return notificationBuilder;
     }
 

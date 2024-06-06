@@ -1,30 +1,10 @@
 /*
- *  Nextcloud Android Library is available under MIT license
+ * Nextcloud - Android Client
  *
- *  @author Álvaro Brey Vilas
- *  Copyright (C) 2022 Álvaro Brey Vilas
- *  Copyright (C) 2022 Nextcloud GmbH
- *
- *  Permission is hereby granted, free of charge, to any person obtaining a copy
- *  of this software and associated documentation files (the "Software"), to deal
- *  in the Software without restriction, including without limitation the rights
- *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *  copies of the Software, and to permit persons to whom the Software is
- *  furnished to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- *  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- *  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- *  ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- *  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- *  THE SOFTWARE.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+ * SPDX-License-Identifier: MIT
  */
-
 package com.owncloud.android.ui.fragment.util
 
 import android.graphics.Canvas
@@ -59,6 +39,7 @@ class GalleryFastScrollViewHelper(
 
     // header is always 1st in the adapter
     private val headerHeight by lazy { getItemHeight(0) }
+
     // the 2nd element is always an item
     private val rowHeight by lazy { getItemHeight(1) }
 
@@ -122,7 +103,7 @@ class GalleryFastScrollViewHelper(
         val adapter = mView.adapter as GalleryAdapter
         if (adapter.sectionCount == 0) return 0
         // in each section, the final row may contain less than the max of items
-        return adapter.files.sumOf { itemCountToRowCount(it.files.size) }
+        return adapter.files.sumOf { itemCountToRowCount(it.rows.size) }
     }
 
     /**
@@ -140,7 +121,7 @@ class GalleryFastScrollViewHelper(
 
         val seenRowsInPreviousSections = adapter.files
             .subList(0, min(itemCoord.section(), adapter.files.size))
-            .sumOf { itemCountToRowCount(it.files.size) }
+            .sumOf { itemCountToRowCount(it.rows.size) }
         val seenRowsInThisSection = if (isHeader) 0 else itemCountToRowCount(itemCoord.relativePos())
         val totalSeenRows = seenRowsInPreviousSections + seenRowsInThisSection
 
@@ -208,7 +189,7 @@ class GalleryFastScrollViewHelper(
      */
     private fun getSectionStartOffsets(files: List<GalleryItems>): List<Int> {
         val sectionHeights =
-            files.map { headerHeight + itemCountToRowCount(it.files.size) * rowHeight }
+            files.map { headerHeight + itemCountToRowCount(it.rows.size) * rowHeight }
         val sectionStartOffsets = sectionHeights.indices.map { i ->
             when (i) {
                 0 -> 0
@@ -236,7 +217,9 @@ class GalleryFastScrollViewHelper(
         val position = getFirstItemAdapterPosition()
         return if (position == RecyclerView.NO_POSITION) {
             null
-        } else popupTextProvider.getPopupText(position)
+        } else {
+            popupTextProvider.getPopupText(mView, position).toString()
+        }
     }
 
     private fun getFirstItemAdapterPosition(): Int {

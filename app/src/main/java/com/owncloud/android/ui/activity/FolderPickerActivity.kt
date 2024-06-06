@@ -1,20 +1,9 @@
 /*
- *   ownCloud Android client application
+ * Nextcloud - Android Client
  *
- *   Copyright (C) 2016 ownCloud Inc.
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License version 2,
- *   as published by the Free Software Foundation.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2023 TSI-mc
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey <alvaro@alvarobrey.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui.activity
 
@@ -31,10 +20,12 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.google.android.material.button.MaterialButton
 import com.nextcloud.client.di.Injectable
 import com.owncloud.android.R
+import com.owncloud.android.databinding.FilesFolderPickerBinding
+import com.owncloud.android.databinding.FilesPickerBinding
 import com.owncloud.android.datamodel.OCFile
 import com.owncloud.android.lib.common.operations.RemoteOperation
 import com.owncloud.android.lib.common.operations.RemoteOperationResult
@@ -43,6 +34,7 @@ import com.owncloud.android.lib.common.utils.Log_OC
 import com.owncloud.android.lib.resources.files.SearchRemoteOperation
 import com.owncloud.android.operations.CreateFolderOperation
 import com.owncloud.android.operations.RefreshFolderOperation
+import com.owncloud.android.services.OperationsService
 import com.owncloud.android.syncadapter.FileSyncAdapter
 import com.owncloud.android.ui.dialog.CreateFolderDialogFragment
 import com.owncloud.android.ui.dialog.SortingOrderDialogFragment.OnSortingOrderListener
@@ -53,14 +45,14 @@ import com.owncloud.android.utils.DataHolderUtil
 import com.owncloud.android.utils.DisplayUtils
 import com.owncloud.android.utils.ErrorMessageAdapter
 import com.owncloud.android.utils.FileSortOrder
+import com.owncloud.android.utils.PathUtils
 import java.io.File
 import javax.inject.Inject
 
-@Suppress("Detekt.TooManyFunctions") // legacy code
+@Suppress("Detekt.TooManyFunctions")
 open class FolderPickerActivity :
     FileActivity(),
     FileFragment.ContainerActivity,
-    View.OnClickListener,
     OnEnforceableRefreshListener,
     Injectable,
     OnSortingOrderListener {
@@ -70,84 +62,124 @@ open class FolderPickerActivity :
     private var mSearchOnlyFolders = false
     var isDoNotEnterEncryptedFolder = false
         private set
-    private var mCancelBtn: MaterialButton? = null
-    private var mChooseBtn: MaterialButton? = null
-    private var caption: String? = null
+
+    private var captionText: String? = null
+
+    private var action: String? = null
+    private var targetFilePaths: ArrayList<String>? = null
+
+    private lateinit var filesPickerBinding: FilesPickerBinding
+    private lateinit var folderPickerBinding: FilesFolderPickerBinding
 
     @Inject
     lateinit var localBroadcastManager: LocalBroadcastManager
 
+    private fun initBinding() {
+        if (this is FilePickerActivity) {
+            filesPickerBinding = FilesPickerBinding.inflate(layoutInflater)
+            setContentView(filesPickerBinding.root)
+        } else {
+            folderPickerBinding = FilesFolderPickerBinding.inflate(layoutInflater)
+            setContentView(folderPickerBinding.root)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log_OC.d(TAG, "onCreate() start")
+
         super.onCreate(savedInstanceState)
-        if (this is FilePickerActivity) {
-            setContentView(R.layout.files_picker)
-        } else {
-            setContentView(R.layout.files_folder_picker)
+
+        initBinding()
+        initControls()
+        setupToolbar()
+        setupActionBar()
+        setupAction()
+        initTargetFilesPath()
+
+        if (savedInstanceState == null) {
+            createFragments()
         }
 
-        // sets callback listeners for UI elements
-        initControls()
+        updateActionBarTitleAndHomeButtonByString(captionText)
+        setBackgroundText()
+        handleOnBackPressed()
+    }
 
-        // Action bar setup
-        setupToolbar()
+    private fun setupActionBar() {
         findViewById<View>(R.id.sort_list_button_group).visibility =
             View.VISIBLE
         findViewById<View>(R.id.switch_grid_view_button).visibility =
             View.GONE
-        if (intent.getStringExtra(EXTRA_ACTION) != null) {
-            when (intent.getStringExtra(EXTRA_ACTION)) {
-                MOVE -> {
-                    caption = resources.getText(R.string.move_to).toString()
-                    mSearchOnlyFolders = true
-                    isDoNotEnterEncryptedFolder = true
-                }
-                COPY -> {
-                    caption = resources.getText(R.string.copy_to).toString()
-                    mSearchOnlyFolders = true
-                    isDoNotEnterEncryptedFolder = true
-                }
-                CHOOSE_LOCATION -> {
-                    caption = resources.getText(R.string.choose_location).toString()
-                    mSearchOnlyFolders = true
-                    isDoNotEnterEncryptedFolder = true
-                    mChooseBtn!!.text = resources.getString(R.string.common_select)
-                }
-                else -> caption = themeUtils.getDefaultDisplayNameForRootFolder(this)
-            }
+    }
+
+    private fun setupAction() {
+        action = intent.getStringExtra(EXTRA_ACTION)
+
+        if (action != null && action == CHOOSE_LOCATION) {
+            setupUIForChooseButton()
         } else {
-            caption = themeUtils.getDefaultDisplayNameForRootFolder(this)
+            captionText = themeUtils.getDefaultDisplayNameForRootFolder(this)
         }
-        if (intent.getParcelableExtra<Parcelable?>(EXTRA_CURRENT_FOLDER) != null) {
-            file = intent.getParcelableExtra(EXTRA_CURRENT_FOLDER)
-        }
-        if (savedInstanceState == null) {
-            createFragments()
-        }
-        updateActionBarTitleAndHomeButtonByString(caption)
+    }
 
-        // always AFTER setContentView(...) ; to work around bug in its implementation
+    private fun initTargetFilesPath() {
+        targetFilePaths = intent.getStringArrayListExtra(EXTRA_FILE_PATHS)
+    }
 
-        // sets message for empty list of folders
-        setBackgroundText()
-        Log_OC.d(TAG, "onCreate() end")
+    private fun setupUIForChooseButton() {
+        captionText = resources.getText(R.string.folder_picker_choose_caption_text).toString()
+        mSearchOnlyFolders = true
+        isDoNotEnterEncryptedFolder = true
+
+        if (this is FilePickerActivity) {
+            return
+        } else {
+            folderPickerBinding.folderPickerBtnCopy.visibility = View.GONE
+            folderPickerBinding.folderPickerBtnMove.visibility = View.GONE
+            folderPickerBinding.folderPickerBtnChoose.visibility = View.VISIBLE
+            folderPickerBinding.chooseButtonSpacer.visibility = View.VISIBLE
+            folderPickerBinding.moveOrCopyButtonSpacer.visibility = View.GONE
+        }
+    }
+
+    private fun handleOnBackPressed() {
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    listOfFilesFragment?.let {
+                        val levelsUp = it.onBrowseUp()
+
+                        if (levelsUp == 0) {
+                            finish()
+                            return
+                        }
+
+                        file = it.currentFile
+                        updateUiElements()
+                    }
+                }
+            }
+        )
     }
 
     override fun onActionModeStarted(mode: ActionMode) {
         super.onActionModeStarted(mode)
-        if (account != null) {
-            updateFileFromDB()
-            var folder = file
-            if (folder == null || !folder.isFolder) {
-                // fall back to root folder
-                file = storageManager.getFileByPath(OCFile.ROOT_PATH)
-                folder = file
-            }
-            val listOfFolders = listOfFilesFragment
-            listOfFolders!!.listDirectory(folder, false, false)
-            startSyncFolderOperation(folder, false)
-            updateNavigationElementsInActionBar()
+
+        if (action == null) {
+            return
         }
+
+        updateFileFromDB()
+        var folder = file
+        if (folder == null || !folder.isFolder) {
+            file = storageManager.getFileByEncryptedRemotePath(OCFile.ROOT_PATH)
+            folder = file
+        }
+
+        listOfFilesFragment?.listDirectory(folder, false, false)
+        startSyncFolderOperation(folder, false)
+        updateUiElements()
     }
 
     private val activity: Activity
@@ -155,12 +187,16 @@ open class FolderPickerActivity :
 
     protected open fun createFragments() {
         val listOfFiles = OCFileListFragment()
-        val args = Bundle()
-        args.putBoolean(OCFileListFragment.ARG_ONLY_FOLDERS_CLICKABLE, true)
-        args.putBoolean(OCFileListFragment.ARG_HIDE_FAB, true)
-        args.putBoolean(OCFileListFragment.ARG_HIDE_ITEM_OPTIONS, true)
-        args.putBoolean(OCFileListFragment.ARG_SEARCH_ONLY_FOLDER, mSearchOnlyFolders)
-        listOfFiles.arguments = args
+
+        val bundle = Bundle().apply {
+            putBoolean(OCFileListFragment.ARG_ONLY_FOLDERS_CLICKABLE, true)
+            putBoolean(OCFileListFragment.ARG_HIDE_FAB, true)
+            putBoolean(OCFileListFragment.ARG_HIDE_ITEM_OPTIONS, true)
+            putBoolean(OCFileListFragment.ARG_SEARCH_ONLY_FOLDER, mSearchOnlyFolders)
+        }
+
+        listOfFiles.arguments = bundle
+
         val transaction = supportFragmentManager.beginTransaction()
         transaction.add(R.id.fragment_container, listOfFiles, TAG_LIST_OF_FOLDERS)
         transaction.commit()
@@ -171,30 +207,35 @@ open class FolderPickerActivity :
      */
     private fun setBackgroundText() {
         val listFragment = listOfFilesFragment
-        if (listFragment != null) {
+
+        if (listFragment == null) {
+            Log_OC.e(TAG, "OCFileListFragment is null")
+        }
+
+        listFragment?.let {
             if (!mSyncInProgress) {
-                listFragment.setMessageForEmptyList(
-                    R.string.file_list_empty_headline,
+                it.setMessageForEmptyList(
+                    R.string.folder_list_empty_headline,
                     R.string.file_list_empty_moving,
                     R.drawable.ic_list_empty_create_folder,
                     true
                 )
             } else {
-                listFragment.setEmptyListLoadingMessage()
+                it.setEmptyListLoadingMessage()
             }
-        } else {
-            Log_OC.e(TAG, "OCFileListFragment is null")
         }
     }
 
     protected val listOfFilesFragment: OCFileListFragment?
-        protected get() {
+        get() {
             val listOfFiles = supportFragmentManager.findFragmentByTag(TAG_LIST_OF_FOLDERS)
-            if (listOfFiles != null) {
+
+            return if (listOfFiles != null) {
                 return listOfFiles as OCFileListFragment?
+            } else {
+                Log_OC.e(TAG, "Access to non existing list of files fragment!!")
+                null
             }
-            Log_OC.e(TAG, "Access to non existing list of files fragment!!")
-            return null
         }
 
     /**
@@ -205,8 +246,7 @@ open class FolderPickerActivity :
      */
     override fun onBrowsedDownTo(directory: OCFile) {
         file = directory
-        updateNavigationElementsInActionBar()
-        // Sync Folder
+        updateUiElements()
         startSyncFolderOperation(directory, false)
     }
 
@@ -218,8 +258,7 @@ open class FolderPickerActivity :
         val currentSyncTime = System.currentTimeMillis()
         mSyncInProgress = true
 
-        // perform folder synchronization
-        val refreshFolderOperation: RemoteOperation<*> = RefreshFolderOperation(
+        RefreshFolderOperation(
             folder,
             currentSyncTime,
             false,
@@ -227,50 +266,62 @@ open class FolderPickerActivity :
             storageManager,
             user.orElseThrow { RuntimeException("User not set") },
             applicationContext
-        )
-        refreshFolderOperation.execute(account, this, null, null)
-        listOfFilesFragment!!.isLoading = true
+        ).also {
+            it.execute(account, this, null, null)
+        }
+
+        listOfFilesFragment?.isLoading = true
         setBackgroundText()
     }
 
     override fun onResume() {
         super.onResume()
         Log_OC.e(TAG, "onResume() start")
-        listOfFilesFragment!!.isLoading = mSyncInProgress
 
-        // refresh list of files
+        listOfFilesFragment?.isLoading = mSyncInProgress
         refreshListOfFilesFragment(false)
+        file = listOfFilesFragment?.currentFile
+        updateUiElements()
 
-        // Listen for sync messages
-        val syncIntentFilter = IntentFilter(FileSyncAdapter.EVENT_FULL_SYNC_START)
-        syncIntentFilter.addAction(FileSyncAdapter.EVENT_FULL_SYNC_END)
-        syncIntentFilter.addAction(FileSyncAdapter.EVENT_FULL_SYNC_FOLDER_CONTENTS_SYNCED)
-        syncIntentFilter.addAction(RefreshFolderOperation.EVENT_SINGLE_FOLDER_CONTENTS_SYNCED)
-        syncIntentFilter.addAction(RefreshFolderOperation.EVENT_SINGLE_FOLDER_SHARES_SYNCED)
+        val intentFilter = getSyncIntentFilter()
         mSyncBroadcastReceiver = SyncBroadcastReceiver()
-        localBroadcastManager.registerReceiver(mSyncBroadcastReceiver!!, syncIntentFilter)
+        mSyncBroadcastReceiver?.let {
+            localBroadcastManager.registerReceiver(it, intentFilter)
+        }
+
         Log_OC.d(TAG, "onResume() end")
+    }
+
+    private fun getSyncIntentFilter(): IntentFilter {
+        return IntentFilter(FileSyncAdapter.EVENT_FULL_SYNC_START).apply {
+            addAction(FileSyncAdapter.EVENT_FULL_SYNC_END)
+            addAction(FileSyncAdapter.EVENT_FULL_SYNC_FOLDER_CONTENTS_SYNCED)
+            addAction(RefreshFolderOperation.EVENT_SINGLE_FOLDER_CONTENTS_SYNCED)
+            addAction(RefreshFolderOperation.EVENT_SINGLE_FOLDER_SHARES_SYNCED)
+        }
     }
 
     override fun onPause() {
         Log_OC.e(TAG, "onPause() start")
+
         if (mSyncBroadcastReceiver != null) {
             localBroadcastManager.unregisterReceiver(mSyncBroadcastReceiver!!)
             mSyncBroadcastReceiver = null
         }
+
         Log_OC.d(TAG, "onPause() end")
         super.onPause()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        val inflater = menuInflater
-        inflater.inflate(R.menu.activity_folder_picker, menu)
+        menuInflater.inflate(R.menu.activity_folder_picker, menu)
         return super.onCreateOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         var retval = true
         val itemId = item.itemId
+
         if (itemId == R.id.action_create_dir) {
             val dialog = CreateFolderDialogFragment.newInstance(currentFolder)
             dialog.show(supportFragmentManager, CreateFolderDialogFragment.CREATE_FOLDER_FRAGMENT)
@@ -282,6 +333,7 @@ open class FolderPickerActivity :
         } else {
             retval = super.onOptionsItemSelected(item)
         }
+
         return retval
     }
 
@@ -289,102 +341,125 @@ open class FolderPickerActivity :
     val currentFolder: OCFile?
         get() {
             val currentFile = file
-            var finalFolder: OCFile? = null
             val storageManager = storageManager
 
-            // If the file is null, take the root folder to avoid any error in functions depending on this one
-            if (currentFile != null) {
+            return if (currentFile != null) {
                 if (currentFile.isFolder) {
-                    finalFolder = currentFile
+                    currentFile
                 } else if (currentFile.remotePath != null) {
                     val parentPath = File(currentFile.remotePath).parent
-                    finalFolder = storageManager.getFileByPath(parentPath)
+                    storageManager.getFileByEncryptedRemotePath(parentPath)
+                } else {
+                    null
                 }
             } else {
-                finalFolder = storageManager.getFileByPath(OCFile.ROOT_PATH)
+                storageManager.getFileByEncryptedRemotePath(OCFile.ROOT_PATH)
             }
-            return finalFolder
         }
 
     private fun refreshListOfFilesFragment(fromSearch: Boolean) {
-        val fileListFragment = listOfFilesFragment
-        fileListFragment?.listDirectory(false, fromSearch)
+        listOfFilesFragment?.listDirectory(false, fromSearch)
     }
 
     fun browseToRoot() {
-        val listOfFiles = listOfFilesFragment
-        if (listOfFiles != null) { // should never be null, indeed
-            val root = storageManager.getFileByPath(OCFile.ROOT_PATH)
-            listOfFiles.listDirectory(root, false, false)
-            file = listOfFiles.currentFile
-            updateNavigationElementsInActionBar()
+        listOfFilesFragment?.let {
+            val root = storageManager.getFileByEncryptedRemotePath(OCFile.ROOT_PATH)
+            it.listDirectory(root, false, false)
+            file = it.currentFile
+            updateUiElements()
             startSyncFolderOperation(root, false)
         }
     }
 
-    override fun onBackPressed() {
-        val listOfFiles = listOfFilesFragment
-        if (listOfFiles != null) { // should never be null, indeed
-            val levelsUp = listOfFiles.onBrowseUp()
-            if (levelsUp == 0) {
-                finish()
-                return
-            }
-            file = listOfFiles.currentFile
-            updateNavigationElementsInActionBar()
+    private fun updateUiElements() {
+        toggleChooseEnabled()
+        updateNavigationElementsInActionBar()
+    }
+
+    private fun toggleChooseEnabled() {
+        if (this is FilePickerActivity) {
+            return
+        } else {
+            folderPickerBinding.folderPickerBtnCopy.isEnabled = checkFolderSelectable()
+            folderPickerBinding.folderPickerBtnMove.isEnabled = checkFolderSelectable()
+        }
+    }
+
+    // for copy and move, disable selecting parent folder of target files
+    private fun checkFolderSelectable(): Boolean {
+        return when {
+            action != MOVE_OR_COPY -> true
+            targetFilePaths.isNullOrEmpty() -> true
+            file?.isFolder != true -> true
+
+            // all of the target files are already in the selected directory
+            targetFilePaths?.all { PathUtils.isDirectParent(file.remotePath, it) } == true -> false
+
+            // some of the target files are parents of the selected folder
+            targetFilePaths?.any { PathUtils.isAncestor(it, file.remotePath) } == true -> false
+            else -> true
         }
     }
 
     private fun updateNavigationElementsInActionBar() {
         val currentDir = currentFolder
-        val actionBar = supportActionBar
-        if (actionBar != null) {
-            val atRoot = currentDir == null || currentDir.parentId == 0L
+        supportActionBar?.let { actionBar ->
+            val atRoot = (currentDir == null || currentDir.parentId == 0L)
             actionBar.setDisplayHomeAsUpEnabled(!atRoot)
             actionBar.setHomeButtonEnabled(!atRoot)
-            themeToolbarUtils.tintBackButton(actionBar, this)
-            themeToolbarUtils.setColoredTitle(supportActionBar, if (atRoot) caption else currentDir!!.fileName, this)
+            val title = if (atRoot) captionText ?: "" else currentDir?.fileName
+            title?.let {
+                viewThemeUtils.files.themeActionBar(this, actionBar, title)
+            }
         }
     }
 
-    /**
-     * Set per-view controllers
-     */
     private fun initControls() {
-        mCancelBtn = findViewById(R.id.folder_picker_btn_cancel)
-        mChooseBtn = findViewById(R.id.folder_picker_btn_choose)
-        if (mChooseBtn != null) {
-            themeButtonUtils.colorPrimaryButton(mChooseBtn, this, themeColorUtils)
-            mChooseBtn!!.setOnClickListener(this)
-        }
-        if (mCancelBtn != null) {
-            if (this is FilePickerActivity) {
-                themeButtonUtils.colorPrimaryButton(mCancelBtn, this, themeColorUtils)
-            } else {
-                mCancelBtn!!.setTextColor(themeColorUtils.primaryColor(this, true))
+        if (this is FilePickerActivity) {
+            viewThemeUtils.material.colorMaterialButtonPrimaryFilled(filesPickerBinding.folderPickerBtnCancel)
+            filesPickerBinding.folderPickerBtnCancel.setOnClickListener { finish() }
+        } else {
+            viewThemeUtils.material.colorMaterialButtonText(folderPickerBinding.folderPickerBtnCancel)
+            folderPickerBinding.folderPickerBtnCancel.setOnClickListener { finish() }
+
+            viewThemeUtils.material.colorMaterialButtonPrimaryTonal(folderPickerBinding.folderPickerBtnChoose)
+            folderPickerBinding.folderPickerBtnChoose.setOnClickListener { processOperation(null) }
+
+            viewThemeUtils.material.colorMaterialButtonPrimaryFilled(folderPickerBinding.folderPickerBtnCopy)
+            folderPickerBinding.folderPickerBtnCopy.setOnClickListener {
+                processOperation(
+                    OperationsService.ACTION_COPY_FILE
+                )
             }
-            mCancelBtn!!.setOnClickListener(this)
+
+            viewThemeUtils.material.colorMaterialButtonPrimaryTonal(folderPickerBinding.folderPickerBtnMove)
+            folderPickerBinding.folderPickerBtnMove.setOnClickListener {
+                processOperation(
+                    OperationsService.ACTION_MOVE_FILE
+                )
+            }
         }
     }
 
-    override fun onClick(v: View) {
-        if (v == mCancelBtn) {
-            finish()
-        } else if (v == mChooseBtn) {
-            val i = intent
-            val resultData = Intent()
-            resultData.putExtra(EXTRA_FOLDER, listOfFilesFragment!!.currentFile)
-            val targetFiles = i.getParcelableArrayListExtra<Parcelable>(EXTRA_FILES)
-            if (targetFiles != null) {
-                resultData.putParcelableArrayListExtra(EXTRA_FILES, targetFiles)
-            }
-            val targetFilePaths = i.getStringArrayListExtra(EXTRA_FILE_PATHS)
-            if (targetFilePaths != null) {
-                resultData.putStringArrayListExtra(EXTRA_FILE_PATHS, targetFilePaths)
-            }
-            setResult(RESULT_OK, resultData)
-            finish()
+    private fun processOperation(action: String?) {
+        val i = intent
+        val resultData = Intent()
+        resultData.putExtra(EXTRA_FOLDER, listOfFilesFragment?.currentFile)
+
+        i.getParcelableArrayListExtra<Parcelable>(EXTRA_FILES)?.let { targetFiles ->
+            resultData.putParcelableArrayListExtra(EXTRA_FILES, targetFiles)
         }
+
+        targetFilePaths?.let { filePaths ->
+            action?.let { action ->
+                fileOperationsHelper.moveOrCopyFiles(action, filePaths, file)
+            }
+
+            resultData.putStringArrayListExtra(EXTRA_FILE_PATHS, filePaths)
+        }
+
+        setResult(RESULT_OK, resultData)
+        finish()
     }
 
     override fun onRemoteOperationFinish(operation: RemoteOperation<*>?, result: RemoteOperationResult<*>) {
@@ -410,7 +485,8 @@ open class FolderPickerActivity :
         } else {
             try {
                 DisplayUtils.showSnackMessage(
-                    this, ErrorMessageAdapter.getErrorCauseMessage(result, operation, resources)
+                    this,
+                    ErrorMessageAdapter.getErrorCauseMessage(result, operation, resources)
                 )
             } catch (e: Resources.NotFoundException) {
                 Log_OC.e(TAG, "Error while trying to show fail message ", e)
@@ -419,10 +495,13 @@ open class FolderPickerActivity :
     }
 
     fun search(query: String?) {
-        val fileListFragment = listOfFilesFragment
-        fileListFragment?.onMessageEvent(
+        if (query == null) {
+            return
+        }
+
+        listOfFilesFragment?.onMessageEvent(
             SearchEvent(
-                query!!,
+                query,
                 SearchRemoteOperation.SearchType.FILE_SEARCH
             )
         )
@@ -432,68 +511,101 @@ open class FolderPickerActivity :
         /**
          * [BroadcastReceiver] to enable syncing feedback in UI
          */
-        @Suppress("Detekt.ComplexMethod", "Detekt.NestedBlockDepth", "Detekt.TooGenericExceptionCaught") // legacy code
+        @Suppress(
+            "Detekt.ComplexMethod",
+            "Detekt.NestedBlockDepth",
+            "Detekt.TooGenericExceptionCaught",
+            "Detekt.LongMethod"
+        ) // legacy code
         override fun onReceive(context: Context, intent: Intent) {
             try {
                 val event = intent.action
                 Log_OC.d(TAG, "Received broadcast $event")
                 val accountName = intent.getStringExtra(FileSyncAdapter.EXTRA_ACCOUNT_NAME)
                 val syncFolderRemotePath = intent.getStringExtra(FileSyncAdapter.EXTRA_FOLDER_PATH)
+
                 val syncResult = DataHolderUtil.getInstance()
                     .retrieve(intent.getStringExtra(FileSyncAdapter.EXTRA_RESULT)) as RemoteOperationResult<*>
-                val sameAccount = account != null && accountName == account.name && storageManager != null
-                if (sameAccount) {
-                    if (FileSyncAdapter.EVENT_FULL_SYNC_START == event) {
-                        mSyncInProgress = true
-                    } else {
-                        var currentFile = if (file == null) null else storageManager.getFileByPath(file.remotePath)
-                        val currentDir = if (currentFolder == null) null else storageManager.getFileByPath(
-                            currentFolder!!.remotePath
-                        )
-                        if (currentDir == null) {
-                            // current folder was removed from the server
-                            DisplayUtils.showSnackMessage(
-                                activity,
-                                R.string.sync_current_folder_was_removed,
-                                currentFolder!!.fileName
-                            )
-                            browseToRoot()
-                        } else {
-                            if (currentFile == null && !file.isFolder) {
-                                // currently selected file was removed in the server, and now we know it
-                                currentFile = currentDir
-                            }
-                            if (currentDir.remotePath == syncFolderRemotePath) {
-                                val fileListFragment = listOfFilesFragment
-                                fileListFragment?.listDirectory(currentDir, false, false)
-                            }
-                            file = currentFile
-                        }
-                        mSyncInProgress = FileSyncAdapter.EVENT_FULL_SYNC_END != event &&
-                            RefreshFolderOperation.EVENT_SINGLE_FOLDER_SHARES_SYNCED != event
-                        if (RefreshFolderOperation.EVENT_SINGLE_FOLDER_CONTENTS_SYNCED == event && !syncResult.isSuccess
-                        ) {
-                            if (ResultCode.UNAUTHORIZED == syncResult.code || (
-                                syncResult.isException &&
-                                    syncResult.exception is AuthenticatorException
-                                )
-                            ) {
-                                requestCredentialsUpdate(context)
-                            } else if (ResultCode.SSL_RECOVERABLE_PEER_UNVERIFIED == syncResult.code) {
-                                showUntrustedCertDialog(syncResult)
-                            }
-                        }
-                    }
-                    DataHolderUtil.getInstance().delete(intent.getStringExtra(FileSyncAdapter.EXTRA_RESULT))
-                    Log_OC.d(TAG, "Setting progress visibility to $mSyncInProgress")
-                    listOfFilesFragment!!.isLoading = mSyncInProgress
-                    setBackgroundText()
+                val sameAccount = (account != null && accountName == account.name && storageManager != null)
+
+                if (!sameAccount) {
+                    return
                 }
+
+                if (FileSyncAdapter.EVENT_FULL_SYNC_START == event) {
+                    mSyncInProgress = true
+                } else {
+                    var (currentFile, currentDir) = getCurrentFileAndDirectory()
+
+                    if (currentDir == null) {
+                        browseRootForRemovedFolder()
+                    } else {
+                        if (currentFile == null && !file.isFolder) {
+                            // currently selected file was removed in the server, and now we know it
+                            currentFile = currentDir
+                        }
+                        if (currentDir.remotePath == syncFolderRemotePath) {
+                            listOfFilesFragment?.listDirectory(currentDir, false, false)
+                        }
+                        file = currentFile
+                    }
+
+                    mSyncInProgress = (
+                        FileSyncAdapter.EVENT_FULL_SYNC_END != event &&
+                            RefreshFolderOperation.EVENT_SINGLE_FOLDER_SHARES_SYNCED != event
+                        )
+
+                    checkCredentials(syncResult, context, event)
+                }
+
+                DataHolderUtil.getInstance().delete(intent.getStringExtra(FileSyncAdapter.EXTRA_RESULT))
+                Log_OC.d(TAG, "Setting progress visibility to $mSyncInProgress")
+                listOfFilesFragment?.isLoading = mSyncInProgress
+                setBackgroundText()
             } catch (e: RuntimeException) {
                 Log_OC.e(TAG, "Error on broadcast receiver", e)
                 // avoid app crashes after changing the serial id of RemoteOperationResult
                 // in owncloud library with broadcast notifications pending to process
                 DataHolderUtil.getInstance().delete(intent.getStringExtra(FileSyncAdapter.EXTRA_RESULT))
+            }
+        }
+
+        private fun getCurrentFileAndDirectory(): Pair<OCFile?, OCFile?> {
+            val currentFile =
+                if (file == null) null else storageManager.getFileByEncryptedRemotePath(file.remotePath)
+
+            val currentDir = if (currentFolder == null) {
+                null
+            } else {
+                storageManager.getFileByEncryptedRemotePath(
+                    currentFolder?.remotePath
+                )
+            }
+
+            return Pair(currentFile, currentDir)
+        }
+
+        private fun browseRootForRemovedFolder() {
+            DisplayUtils.showSnackMessage(
+                activity,
+                R.string.sync_current_folder_was_removed,
+                currentFolder?.fileName
+            )
+            browseToRoot()
+        }
+
+        private fun checkCredentials(syncResult: RemoteOperationResult<*>, context: Context, event: String?) {
+            if (RefreshFolderOperation.EVENT_SINGLE_FOLDER_CONTENTS_SYNCED == event && !syncResult.isSuccess
+            ) {
+                if (ResultCode.UNAUTHORIZED == syncResult.code || (
+                        syncResult.isException &&
+                            syncResult.exception is AuthenticatorException
+                        )
+                ) {
+                    requestCredentialsUpdate(context)
+                } else if (ResultCode.SSL_RECOVERABLE_PEER_UNVERIFIED == syncResult.code) {
+                    showUntrustedCertDialog(syncResult)
+                }
             }
         }
     }
@@ -522,15 +634,13 @@ open class FolderPickerActivity :
     }
 
     private fun refreshList(ignoreETag: Boolean) {
-        val listOfFiles = listOfFilesFragment
-        if (listOfFiles != null) {
-            val folder = listOfFiles.currentFile
-            folder?.let { startSyncFolderOperation(it, ignoreETag) }
+        listOfFilesFragment?.currentFile?.let {
+            startSyncFolderOperation(it, ignoreETag)
         }
     }
 
-    override fun onSortingOrderChosen(selection: FileSortOrder) {
-        listOfFilesFragment!!.sortFiles(selection)
+    override fun onSortingOrderChosen(selection: FileSortOrder?) {
+        listOfFilesFragment?.sortFiles(selection)
     }
 
     companion object {
@@ -550,13 +660,10 @@ open class FolderPickerActivity :
         @JvmField
         val EXTRA_ACTION = FolderPickerActivity::class.java.canonicalName?.plus(".EXTRA_ACTION")
 
-        @JvmField
-        val EXTRA_CURRENT_FOLDER = FolderPickerActivity::class.java.canonicalName?.plus(".EXTRA_CURRENT_FOLDER")
-
-        const val MOVE = "MOVE"
-        const val COPY = "COPY"
+        const val MOVE_OR_COPY = "MOVE_OR_COPY"
         const val CHOOSE_LOCATION = "CHOOSE_LOCATION"
         private val TAG = FolderPickerActivity::class.java.simpleName
-        protected const val TAG_LIST_OF_FOLDERS = "LIST_OF_FOLDERS"
+
+        const val TAG_LIST_OF_FOLDERS = "LIST_OF_FOLDERS"
     }
 }

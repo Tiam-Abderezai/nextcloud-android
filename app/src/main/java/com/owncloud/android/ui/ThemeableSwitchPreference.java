@@ -1,28 +1,13 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Tobias Kaminsky
- * Copyright (C) 2017 Tobias Kaminsky
- * Copyright (C) 2017 Nextcloud GmbH.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2017 Tobias Kaminsky <tobias@kaminsky.me>
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-or-later OR GPL-2.0-only
  */
 package com.owncloud.android.ui;
 
 import android.content.Context;
-import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.preference.SwitchPreference;
 import android.util.AttributeSet;
 import android.view.View;
@@ -30,21 +15,16 @@ import android.view.ViewGroup;
 import android.widget.Switch;
 
 import com.owncloud.android.MainApp;
-import com.owncloud.android.R;
-import com.owncloud.android.utils.theme.ThemeColorUtils;
+import com.owncloud.android.utils.theme.ViewThemeUtils;
 
 import javax.inject.Inject;
-
-import androidx.appcompat.app.AppCompatDelegate;
-import androidx.core.graphics.drawable.DrawableCompat;
-
 
 /**
  * Themeable switch preference TODO Migrate to androidx
  */
 public class ThemeableSwitchPreference extends SwitchPreference {
     @Inject
-    ThemeColorUtils themeColorUtils;
+    ViewThemeUtils viewThemeUtils;
 
     public ThemeableSwitchPreference(Context context) {
         super(context);
@@ -71,37 +51,13 @@ public class ThemeableSwitchPreference extends SwitchPreference {
     }
 
     private void findSwitch(ViewGroup viewGroup) {
-        ColorStateList thumbColorStateList = null;
-        ColorStateList trackColorStateList = null;
-
         for (int i = 0; i < viewGroup.getChildCount(); i++) {
             View child = viewGroup.getChildAt(i);
 
             if (child instanceof Switch) {
                 Switch switchView = (Switch) child;
 
-                if(thumbColorStateList == null && trackColorStateList == null) {
-                    int thumbColor = themeColorUtils.primaryAccentColor(getContext());
-                    if (themeColorUtils.darkTheme(getContext()) &&
-                        AppCompatDelegate.getDefaultNightMode() == AppCompatDelegate.MODE_NIGHT_YES) {
-                        thumbColor = Color.WHITE;
-                    }
-                    int trackColor = Color.argb(77, Color.red(thumbColor), Color.green(thumbColor), Color.blue(thumbColor));
-                    int trackColorUnchecked = getContext().getResources().getColor(R.color.switch_track_color_unchecked);
-                    thumbColorStateList = new ColorStateList(
-                        new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                        new int[]{thumbColor, getContext().getResources().getColor(R.color.switch_thumb_color_unchecked)});
-                    trackColorStateList = new ColorStateList(
-                        new int[][]{new int[]{android.R.attr.state_checked},
-                            new int[]{}},
-                            new int[]{trackColor, trackColorUnchecked});
-                }
-
-                // setting the thumb color
-                DrawableCompat.setTintList(switchView.getThumbDrawable(), thumbColorStateList);
-
-                // setting the track color
-                DrawableCompat.setTintList(switchView.getTrackDrawable(), trackColorStateList);
+                viewThemeUtils.platform.colorSwitch(switchView);
 
                 break;
             } else if (child instanceof ViewGroup) {

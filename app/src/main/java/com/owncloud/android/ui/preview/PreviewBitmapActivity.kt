@@ -1,39 +1,31 @@
 /*
- * Nextcloud Android client application
+ * Nextcloud - Android Client
  *
- * @author Álvaro Brey Vilas
- * Copyright (C) 2022 Álvaro Brey Vilas
- * Copyright (C) 2022 Nextcloud GmbH
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2022 Álvaro Brey Vilas <alvaro@alvarobrey.com>
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
-
 package com.owncloud.android.ui.preview
 
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import com.nextcloud.client.di.Injectable
 import com.owncloud.android.databinding.ActivityPreviewBitmapBinding
+import com.owncloud.android.utils.theme.ViewThemeUtils
+import javax.inject.Inject
 
 /**
  * Zoomable preview of a single bitmap
  */
-class PreviewBitmapActivity : AppCompatActivity() {
+class PreviewBitmapActivity : AppCompatActivity(), Injectable {
 
     companion object {
         const val EXTRA_BITMAP_PATH = "EXTRA_BITMAP_PATH"
     }
+
+    @Inject
+    lateinit var viewThemeUtils: ViewThemeUtils
 
     private lateinit var binding: ActivityPreviewBitmapBinding
 
@@ -47,6 +39,7 @@ class PreviewBitmapActivity : AppCompatActivity() {
         supportActionBar?.let {
             it.setDisplayHomeAsUpEnabled(true)
             it.setDisplayShowHomeEnabled(true)
+            viewThemeUtils.files.setWhiteBackButton(this, it)
         }
     }
 

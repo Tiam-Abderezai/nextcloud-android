@@ -1,22 +1,11 @@
 /*
- *  Copyright (C) 2015  Jon Griffiths (jon_p_griffiths@yahoo.com)
- *  Copyright (C) 2013  Dominik Schürmann <dominik@dominikschuermann.de>
- *  Copyright (C) 2010-2011  Lukas Aichbauer
+ * Nextcloud - Android Client
  *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2015 Jon Griffiths (jon_p_griffiths@yahoo.com)
+ * SPDX-FileCopyrightText: 2013 Dominik Schürmann <dominik@dominikschuermann.de>
+ * SPDX-FileCopyrightText: 2010-2011 Lukas Aichbauer
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
-
 package third_parties.sufficientlysecure;
 
 import android.annotation.SuppressLint;
@@ -434,17 +423,25 @@ public class ProcessVEvent {
             if (t.getDateTime() != null) {
                 alarmMs = t.getDateTime().getTime(); // Absolute
             } else if (t.getDuration() != null && t.getDuration().isNegative()) {
+                //alarm trigger before start of event
                 Related rel = (Related) t.getParameter(Parameter.RELATED);
                 if (rel != null && rel == Related.END) {
                     alarmStartMs = e.getEndDate().getDate().getTime();
                 }
-                alarmMs = alarmStartMs - durationToMs(t.getDuration()); // Relative
+                alarmMs = alarmStartMs - durationToMs(t.getDuration()); // Relative "-"
+            } else if (t.getDuration() != null && !t.getDuration().isNegative()) {
+                //alarm trigger after start of event
+                Related rel = (Related) t.getParameter(Parameter.RELATED);
+                if (rel != null && rel == Related.END) {
+                    alarmStartMs = e.getEndDate().getDate().getTime();
+                }
+                alarmMs = alarmStartMs + durationToMs(t.getDuration()); // Relative "+"
             } else {
                 continue;
             }
 
             int reminder = (int) ((startMs - alarmMs) / DateUtils.MINUTE_IN_MILLIS);
-            if (reminder >= 0 && !reminders.contains(reminder)) {
+            if (!reminders.contains(reminder)) {
                 reminders.add(reminder);
             }
         }
@@ -520,7 +517,7 @@ public class ProcessVEvent {
     }
 
     private Cursor queryEvents(ContentResolver resolver, StringBuilder b, List<String> argsList) {
-        final String where = b.toString();
+        final String where = b.toString() + " AND deleted=0";
         final String[] args = argsList.toArray(new String[argsList.size()]);
         return resolver.query(Events.CONTENT_URI, EVENT_QUERY_COLUMNS, where, args, null);
     }
